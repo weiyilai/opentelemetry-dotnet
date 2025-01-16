@@ -1,20 +1,7 @@
-// <copyright file="MeterProviderBuilderExtensions.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
-#if NET6_0_OR_GREATER
+#if NET
 using System.Diagnostics.CodeAnalysis;
 #endif
 using System.Diagnostics.Metrics;
@@ -63,10 +50,10 @@ public static class MeterProviderBuilderExtensions
     /// <param name="meterProviderBuilder"><see cref="MeterProviderBuilder"/>.</param>
     /// <returns>The supplied <see cref="MeterProviderBuilder"/> for chaining.</returns>
     public static MeterProviderBuilder AddReader<
-#if NET6_0_OR_GREATER
-        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
+#if NET
+    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
 #endif
-        T>(this MeterProviderBuilder meterProviderBuilder)
+    T>(this MeterProviderBuilder meterProviderBuilder)
         where T : MetricReader
     {
         meterProviderBuilder.ConfigureServices(services => services.TryAddSingleton<T>());
@@ -231,7 +218,7 @@ public static class MeterProviderBuilderExtensions
         {
             if (builder is MeterProviderBuilderSdk meterProviderBuilderSdk)
             {
-                meterProviderBuilderSdk.SetMaxMetricStreams(maxMetricStreams);
+                meterProviderBuilderSdk.SetMetricLimit(maxMetricStreams);
             }
         });
 
@@ -249,8 +236,9 @@ public static class MeterProviderBuilderExtensions
     /// This may change in the future. See: https://github.com/open-telemetry/opentelemetry-dotnet/issues/2360.
     /// </remarks>
     /// <param name="meterProviderBuilder"><see cref="MeterProviderBuilder"/>.</param>
-    /// <param name="maxMetricPointsPerMetricStream">Maximum maximum number of metric points allowed per metric stream.</param>
+    /// <param name="maxMetricPointsPerMetricStream">Maximum number of metric points allowed per metric stream.</param>
     /// <returns>The supplied <see cref="MeterProviderBuilder"/> for chaining.</returns>
+    [Obsolete("Use MetricStreamConfiguration.CardinalityLimit via the AddView API instead. This method is marked as obsolete in version 1.10.0 and will be removed in a future version.")]
     public static MeterProviderBuilder SetMaxMetricPointsPerMetricStream(this MeterProviderBuilder meterProviderBuilder, int maxMetricPointsPerMetricStream)
     {
         Guard.ThrowIfOutOfRange(maxMetricPointsPerMetricStream, min: 1);
@@ -259,7 +247,7 @@ public static class MeterProviderBuilderExtensions
         {
             if (builder is MeterProviderBuilderSdk meterProviderBuilderSdk)
             {
-                meterProviderBuilderSdk.SetMaxMetricPointsPerMetricStream(maxMetricPointsPerMetricStream);
+                meterProviderBuilderSdk.SetDefaultCardinalityLimit(maxMetricPointsPerMetricStream);
             }
         });
 
@@ -277,6 +265,8 @@ public static class MeterProviderBuilderExtensions
     /// <returns>The supplied <see cref="MeterProviderBuilder"/> for chaining.</returns>
     public static MeterProviderBuilder SetResourceBuilder(this MeterProviderBuilder meterProviderBuilder, ResourceBuilder resourceBuilder)
     {
+        Guard.ThrowIfNull(resourceBuilder);
+
         meterProviderBuilder.ConfigureBuilder((sp, builder) =>
         {
             if (builder is MeterProviderBuilderSdk meterProviderBuilderSdk)
@@ -297,6 +287,8 @@ public static class MeterProviderBuilderExtensions
     /// <returns>The supplied <see cref="MeterProviderBuilder"/> for chaining.</returns>
     public static MeterProviderBuilder ConfigureResource(this MeterProviderBuilder meterProviderBuilder, Action<ResourceBuilder> configure)
     {
+        Guard.ThrowIfNull(configure);
+
         meterProviderBuilder.ConfigureBuilder((sp, builder) =>
         {
             if (builder is MeterProviderBuilderSdk meterProviderBuilderSdk)
@@ -323,35 +315,57 @@ public static class MeterProviderBuilderExtensions
         throw new NotSupportedException($"Build is not supported on '{meterProviderBuilder?.GetType().FullName ?? "null"}' instances.");
     }
 
-#if EXPOSE_EXPERIMENTAL_FEATURES
     /// <summary>
-    /// Sets the <see cref="ExemplarFilter"/> to be used for this provider.
-    /// This is applied to all the metrics from this provider.
+    /// Sets the default <see cref="ExemplarFilterType"/> for the provider.
     /// </summary>
-    /// <remarks><inheritdoc cref="Exemplar" path="/remarks"/></remarks>
-    /// <param name="meterProviderBuilder"><see cref="MeterProviderBuilder"/>.</param>
-    /// <param name="exemplarFilter"><see cref="ExemplarFilter"/> ExemplarFilter to use.</param>
-    /// <returns>The supplied <see cref="MeterProviderBuilder"/> for chaining.</returns>
-    public
-#else
-    /// <summary>
-    /// Sets the <see cref="ExemplarFilter"/> to be used for this provider.
-    /// This is applied to all the metrics from this provider.
-    /// </summary>
-    /// <param name="meterProviderBuilder"><see cref="MeterProviderBuilder"/>.</param>
-    /// <param name="exemplarFilter"><see cref="ExemplarFilter"/> ExemplarFilter to use.</param>
-    /// <returns>The supplied <see cref="MeterProviderBuilder"/> for chaining.</returns>
-    internal
-#endif
-        static MeterProviderBuilder SetExemplarFilter(this MeterProviderBuilder meterProviderBuilder, ExemplarFilter exemplarFilter)
+    /// <remarks>
+    /// <para>Notes:
+    /// <list type="bullet">
+    /// <item>The configured <see cref="ExemplarFilterType"/> controls how
+    /// measurements will be offered to <see cref="ExemplarReservoir"/>s which
+    /// are responsible for storing <see cref="Exemplar"/>s on metrics.</item>
+    /// <item>The default provider configuration is <see
+    /// cref="ExemplarFilterType.AlwaysOff"/>.</item>
+    /// <item>Use <see cref="ExemplarFilterType.TraceBased"/> or <see
+    /// cref="ExemplarFilterType.AlwaysOn"/> to enable <see cref="Exemplar"/>s
+    /// for all metrics managed by the provider.</item>
+    /// <item>If <see cref="Exemplar"/>s are enabled on the provider by the
+    /// configured <see cref="ExemplarFilterType"/> then <see
+    /// cref="ExemplarReservoir"/>s will be configured on metrics using the
+    /// defaults described in the specification: <see
+    /// href="https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/metrics/sdk.md#exemplar-defaults"
+    /// />. To change the <see cref="ExemplarReservoir"/> for a metric use the
+    /// <c>AddView</c> API and <see
+    /// cref="MetricStreamConfiguration.ExemplarReservoirFactory"/>.</item>
+    /// </list>
+    /// </para>
+    /// <para>Specification: <see
+    /// href="https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/metrics/sdk.md#exemplarfilter"/>.</para>
+    /// </remarks>
+    /// <param name="meterProviderBuilder"><see
+    /// cref="MeterProviderBuilder"/>.</param>
+    /// <param name="exemplarFilter"><see cref="ExemplarFilterType"/> to
+    /// use.</param>
+    /// <returns>The supplied <see cref="MeterProviderBuilder"/> for
+    /// chaining.</returns>
+    public static MeterProviderBuilder SetExemplarFilter(
+        this MeterProviderBuilder meterProviderBuilder,
+        ExemplarFilterType exemplarFilter)
     {
-        Guard.ThrowIfNull(exemplarFilter);
-
         meterProviderBuilder.ConfigureBuilder((sp, builder) =>
         {
             if (builder is MeterProviderBuilderSdk meterProviderBuilderSdk)
             {
-                meterProviderBuilderSdk.SetExemplarFilter(exemplarFilter);
+                switch (exemplarFilter)
+                {
+                    case ExemplarFilterType.AlwaysOn:
+                    case ExemplarFilterType.AlwaysOff:
+                    case ExemplarFilterType.TraceBased:
+                        meterProviderBuilderSdk.SetExemplarFilter(exemplarFilter);
+                        break;
+                    default:
+                        throw new NotSupportedException($"ExemplarFilterType '{exemplarFilter}' is not supported.");
+                }
             }
         });
 

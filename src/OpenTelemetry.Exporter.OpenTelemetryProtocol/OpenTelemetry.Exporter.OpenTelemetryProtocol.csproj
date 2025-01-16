@@ -5,9 +5,18 @@
     <PackageTags>$(PackageTags);OTLP</PackageTags>
     <MinVerTagPrefix>core-</MinVerTagPrefix>
 
-    <!-- this is temporary. will remove in future PR. -->
-    <Nullable>disable</Nullable>
     <DefineConstants>BUILDING_INTERNAL_PERSISTENT_STORAGE;$(DefineConstants)</DefineConstants>
+    <EnableConfigurationBindingGenerator>true</EnableConfigurationBindingGenerator>
+
+    <!-- Note: SYSLIB1100;SYSLIB1101 - Configuration.Binder: Can't create
+    instance and unsupported type are being emitted by config source generator
+    processing OtlpExporterBuilderOptions. It would be preferable to suppress
+    this at the call site but there is a bug. This could possibly be cleaned up
+    in the future (hopefully .NET 9) see:
+    https://github.com/open-telemetry/opentelemetry-dotnet/pull/5520#discussion_r1556221048
+    and https://github.com/dotnet/runtime/issues/92509 -->
+    <NoWarn>$(NoWarn);SYSLIB1100;SYSLIB1101</NoWarn>
+    <AllowUnsafeBlocks Condition="'$(TargetFramework)' == 'netstandard2.0' OR '$(TargetFramework)' == '$(NetFrameworkMinimumSupportedVersion)'">true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
@@ -15,35 +24,13 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Grpc.Net.Client" Condition="'$(TargetFramework)' == 'netstandard2.1' OR '$(TargetFramework)' == 'net6.0'" />
-    <PackageReference Include="Grpc" Condition="'$(TargetFramework)' == 'netstandard2.0' OR '$(TargetFramework)' == 'net462'" />
-    <PackageReference Include="Google.Protobuf" />
-    <PackageReference Include="Grpc.Tools" PrivateAssets="All" />
+    <Reference Include="System.Net.Http" Condition="'$(TargetFramework)' == '$(NetFrameworkMinimumSupportedVersion)'" />
   </ItemGroup>
 
   <ItemGroup>
     <Compile Include="$(RepoRoot)\src\Shared\PeriodicExportingMetricReaderHelper.cs" Link="Includes\PeriodicExportingMetricReaderHelper.cs" />
-    <Compile Include="$(RepoRoot)\src\Shared\PeerServiceResolver.cs" Link="Includes\PeerServiceResolver.cs" />
-    <Compile Include="$(RepoRoot)\src\Shared\TagAndValueTransformer.cs" Link="Includes\TagAndValueTransformer.cs" />
-    <Compile Include="$(RepoRoot)\src\Shared\TagTransformer.cs" Link="Includes\TagTransformer.cs" />
-
-    <!-- Note: When '$(ExposeExperimentalFeatures)' == 'false' these links are
-    NOT required because this project sees API + SDK internals -->
-    <Compile Include="$(RepoRoot)\src\Shared\Guard.cs" Link="Includes\Guard.cs" RequiresExposedExperimentalFeatures="true" />
-    <Compile Include="$(RepoRoot)\src\Shared\ResourceSemanticConventions.cs" Link="Includes\ResourceSemanticConventions.cs" RequiresExposedExperimentalFeatures="true" />
-    <Compile Include="$(RepoRoot)\src\Shared\EnvironmentVariables\*.cs" Link="Includes\EnvironmentVariables\%(Filename).cs" RequiresExposedExperimentalFeatures="true" />
-    <Compile Include="$(RepoRoot)\src\Shared\ExceptionExtensions.cs" Link="Includes\ExceptionExtensions.cs" RequiresExposedExperimentalFeatures="true" />
-    <Compile Include="$(RepoRoot)\src\Shared\Options\*.cs" Link="Includes\Options\%(Filename).cs" RequiresExposedExperimentalFeatures="true" />
-    <Compile Include="$(RepoRoot)\src\Shared\SemanticConventions.cs" Link="Includes\SemanticConventions.cs" RequiresExposedExperimentalFeatures="true" />
-    <Compile Include="$(RepoRoot)\src\Shared\SpanAttributeConstants.cs" Link="Includes\SpanAttributeConstants.cs" RequiresExposedExperimentalFeatures="true" />
-    <Compile Include="$(RepoRoot)\src\Shared\StatusHelper.cs" Link="Includes\StatusHelper.cs" RequiresExposedExperimentalFeatures="true" />
-    <Compile Include="$(RepoRoot)\src\Shared\Shims\NullableAttributes.cs" Link="Includes\Shims\NullableAttributes.cs" RequiresExposedExperimentalFeatures="true" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Protobuf Include="**/*.proto" Access="internal">
-      <ProtoRoot>Implementation</ProtoRoot>
-    </Protobuf>
+    <Compile Include="$(RepoRoot)\src\Shared\TagWriter\ArrayTagWriter.cs" Link="Includes\TagWriter\ArrayTagWriter.cs" />
+    <Compile Include="$(RepoRoot)\src\Shared\TagWriter\TagWriter.cs" Link="Includes\TagWriter\TagWriter.cs" />
   </ItemGroup>
 
 </Project>

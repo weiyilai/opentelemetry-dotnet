@@ -1,18 +1,5 @@
-// <copyright file="ZipkinExporter.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
 using System.Diagnostics;
 using System.Net;
@@ -37,32 +24,35 @@ public class ZipkinExporter : BaseExporter<Activity>
     private readonly ZipkinExporterOptions options;
     private readonly int maxPayloadSizeInBytes;
     private readonly HttpClient httpClient;
+#if NET
+    private readonly bool synchronousSendSupportedByCurrentPlatform;
+#endif
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ZipkinExporter"/> class.
     /// </summary>
     /// <param name="options">Configuration options.</param>
     /// <param name="client">Http client to use to upload telemetry.</param>
-    public ZipkinExporter(ZipkinExporterOptions options, HttpClient client = null)
+    public ZipkinExporter(ZipkinExporterOptions options, HttpClient? client = null)
     {
         Guard.ThrowIfNull(options);
 
         this.options = options;
-        this.maxPayloadSizeInBytes = (!options.MaxPayloadSizeInBytes.HasValue || options.MaxPayloadSizeInBytes <= 0) ? ZipkinExporterOptions.DefaultMaxPayloadSizeInBytes : options.MaxPayloadSizeInBytes.Value;
+        this.maxPayloadSizeInBytes = (!options.MaxPayloadSizeInBytes.HasValue || options.MaxPayloadSizeInBytes <= 0)
+            ? ZipkinExporterOptions.DefaultMaxPayloadSizeInBytes
+            : options.MaxPayloadSizeInBytes.Value;
         this.httpClient = client ?? options.HttpClientFactory?.Invoke() ?? throw new InvalidOperationException("ZipkinExporter was missing HttpClientFactory or it returned null.");
 
-        ZipkinTagTransformer.LogUnsupportedAttributeType = (string tagValueType, string tagKey) =>
-        {
-            ZipkinExporterEventSource.Log.UnsupportedAttributeType(tagValueType, tagKey);
-        };
-
-        ConfigurationExtensions.LogInvalidEnvironmentVariable = (string key, string value) =>
-        {
-            ZipkinExporterEventSource.Log.InvalidEnvironmentVariable(key, value);
-        };
+#if NET
+        // See: https://github.com/dotnet/runtime/blob/280f2a0c60ce0378b8db49adc0eecc463d00fe5d/src/libraries/System.Net.Http/src/System/Net/Http/HttpClientHandler.AnyMobile.cs#L767
+        this.synchronousSendSupportedByCurrentPlatform = !OperatingSystem.IsAndroid()
+            && !OperatingSystem.IsIOS()
+            && !OperatingSystem.IsTvOS()
+            && !OperatingSystem.IsBrowser();
+#endif
     }
 
-    internal ZipkinEndpoint LocalEndpoint { get; private set; }
+    internal ZipkinEndpoint? LocalEndpoint { get; private set; }
 
     /// <inheritdoc/>
     public override ExportResult Export(in Batch<Activity> batch)
@@ -84,8 +74,10 @@ public class ZipkinExporter : BaseExporter<Activity>
                 Content = new JsonContent(this, batch),
             };
 
-#if NET6_0_OR_GREATER
-            using var response = this.httpClient.Send(request, CancellationToken.None);
+#if NET
+            using var response = this.synchronousSendSupportedByCurrentPlatform
+            ? this.httpClient.Send(request, CancellationToken.None)
+            : this.httpClient.SendAsync(request, CancellationToken.None).GetAwaiter().GetResult();
 #else
             using var response = this.httpClient.SendAsync(request, CancellationToken.None).GetAwaiter().GetResult();
 #endif
@@ -106,15 +98,15 @@ public class ZipkinExporter : BaseExporter<Activity>
     {
         var hostName = ResolveHostName();
 
-        string ipv4 = null;
-        string ipv6 = null;
+        string? ipv4 = null;
+        string? ipv6 = null;
         if (!string.IsNullOrEmpty(hostName))
         {
-            ipv4 = ResolveHostAddress(hostName, AddressFamily.InterNetwork);
-            ipv6 = ResolveHostAddress(hostName, AddressFamily.InterNetworkV6);
+            ipv4 = ResolveHostAddress(hostName!, AddressFamily.InterNetwork);
+            ipv6 = ResolveHostAddress(hostName!, AddressFamily.InterNetworkV6);
         }
 
-        string serviceName = null;
+        string? serviceName = null;
         foreach (var label in resource.Attributes)
         {
             if (label.Key == ResourceSemanticConventions.AttributeServiceName)
@@ -138,9 +130,9 @@ public class ZipkinExporter : BaseExporter<Activity>
             tags: null);
     }
 
-    private static string ResolveHostAddress(string hostName, AddressFamily family)
+    private static string? ResolveHostAddress(string hostName, AddressFamily family)
     {
-        string result = null;
+        string? result = null;
 
         try
         {
@@ -168,9 +160,9 @@ public class ZipkinExporter : BaseExporter<Activity>
         return result;
     }
 
-    private static string ResolveHostName()
+    private static string? ResolveHostName()
     {
-        string result = null;
+        string? result = null;
 
         try
         {
@@ -203,7 +195,7 @@ public class ZipkinExporter : BaseExporter<Activity>
 
         private readonly ZipkinExporter exporter;
         private readonly Batch<Activity> batch;
-        private Utf8JsonWriter writer;
+        private Utf8JsonWriter? writer;
 
         public JsonContent(ZipkinExporter exporter, in Batch<Activity> batch)
         {
@@ -213,14 +205,14 @@ public class ZipkinExporter : BaseExporter<Activity>
             this.Headers.ContentType = JsonHeader;
         }
 
-#if NET6_0_OR_GREATER
-        protected override void SerializeToStream(Stream stream, TransportContext context, CancellationToken cancellationToken)
+#if NET
+        protected override void SerializeToStream(Stream stream, TransportContext? context, CancellationToken cancellationToken)
         {
             this.SerializeToStreamInternal(stream);
         }
 #endif
 
-        protected override Task SerializeToStreamAsync(Stream stream, TransportContext context)
+        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context)
         {
             this.SerializeToStreamInternal(stream);
             return Task.CompletedTask;
@@ -249,7 +241,7 @@ public class ZipkinExporter : BaseExporter<Activity>
 
             foreach (var activity in this.batch)
             {
-                var zipkinSpan = activity.ToZipkinSpan(this.exporter.LocalEndpoint, this.exporter.options.UseShortTraceIds);
+                var zipkinSpan = activity.ToZipkinSpan(this.exporter.LocalEndpoint!, this.exporter.options.UseShortTraceIds);
 
                 zipkinSpan.Write(this.writer);
 

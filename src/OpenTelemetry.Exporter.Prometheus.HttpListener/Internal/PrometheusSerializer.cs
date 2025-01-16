@@ -1,23 +1,12 @@
-// <copyright file="PrometheusSerializer.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
 using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using OpenTelemetry.Internal;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
 
 namespace OpenTelemetry.Exporter.Prometheus;
 
@@ -39,7 +28,7 @@ internal static partial class PrometheusSerializer
     {
         if (MathHelper.IsFinite(value))
         {
-#if NET6_0_OR_GREATER
+#if NET
             Span<char> span = stackalloc char[128];
 
             var result = value.TryFormat(span, out var cchWritten, "G", CultureInfo.InvariantCulture);
@@ -73,7 +62,7 @@ internal static partial class PrometheusSerializer
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int WriteLong(byte[] buffer, int cursor, long value)
     {
-#if NET6_0_OR_GREATER
+#if NET
         Span<char> span = stackalloc char[20];
 
         var result = value.TryFormat(span, out var cchWritten, "G", CultureInfo.InvariantCulture);
@@ -188,7 +177,7 @@ internal static partial class PrometheusSerializer
     {
         Debug.Assert(value != null, $"{nameof(value)} should not be null.");
 
-        for (int i = 0; i < value.Length; i++)
+        for (int i = 0; i < value!.Length; i++)
         {
             var ordinal = (ushort)value[i];
             switch (ordinal)
@@ -215,7 +204,7 @@ internal static partial class PrometheusSerializer
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static int WriteLabel(byte[] buffer, int cursor, string labelKey, object labelValue)
+    public static int WriteLabel(byte[] buffer, int cursor, string labelKey, object? labelValue)
     {
         cursor = WriteLabelKey(buffer, cursor, labelKey);
         buffer[cursor++] = unchecked((byte)'=');
@@ -227,7 +216,7 @@ internal static partial class PrometheusSerializer
 
         return cursor;
 
-        static string GetLabelValueString(object labelValue)
+        static string GetLabelValueString(object? labelValue)
         {
             // TODO: Attribute values should be written as their JSON representation. Extra logic may need to be added here to correctly convert other .NET types.
             // More detail: https://github.com/open-telemetry/opentelemetry-dotnet/issues/4822#issuecomment-1707328495
@@ -241,12 +230,33 @@ internal static partial class PrometheusSerializer
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static int WriteMetricName(byte[] buffer, int cursor, PrometheusMetric metric)
+    public static int WriteMetricName(byte[] buffer, int cursor, PrometheusMetric metric, bool openMetricsRequested)
     {
         // Metric name has already been escaped.
-        for (int i = 0; i < metric.Name.Length; i++)
+        var name = openMetricsRequested ? metric.OpenMetricsName : metric.Name;
+
+        Debug.Assert(!string.IsNullOrWhiteSpace(name), "name was null or whitespace");
+
+        for (int i = 0; i < name.Length; i++)
         {
-            var ordinal = (ushort)metric.Name[i];
+            var ordinal = (ushort)name[i];
+            buffer[cursor++] = unchecked((byte)ordinal);
+        }
+
+        return cursor;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int WriteMetricMetadataName(byte[] buffer, int cursor, PrometheusMetric metric, bool openMetricsRequested)
+    {
+        // Metric name has already been escaped.
+        var name = openMetricsRequested ? metric.OpenMetricsMetadataName : metric.Name;
+
+        Debug.Assert(!string.IsNullOrWhiteSpace(name), "name was null or whitespace");
+
+        for (int i = 0; i < name.Length; i++)
+        {
+            var ordinal = (ushort)name[i];
             buffer[cursor++] = unchecked((byte)ordinal);
         }
 
@@ -263,7 +273,7 @@ internal static partial class PrometheusSerializer
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static int WriteHelpMetadata(byte[] buffer, int cursor, PrometheusMetric metric, string metricDescription)
+    public static int WriteHelpMetadata(byte[] buffer, int cursor, PrometheusMetric metric, string metricDescription, bool openMetricsRequested)
     {
         if (string.IsNullOrEmpty(metricDescription))
         {
@@ -271,7 +281,7 @@ internal static partial class PrometheusSerializer
         }
 
         cursor = WriteAsciiStringNoEscape(buffer, cursor, "# HELP ");
-        cursor = WriteMetricName(buffer, cursor, metric);
+        cursor = WriteMetricMetadataName(buffer, cursor, metric, openMetricsRequested);
 
         if (!string.IsNullOrEmpty(metricDescription))
         {
@@ -285,14 +295,14 @@ internal static partial class PrometheusSerializer
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static int WriteTypeMetadata(byte[] buffer, int cursor, PrometheusMetric metric)
+    public static int WriteTypeMetadata(byte[] buffer, int cursor, PrometheusMetric metric, bool openMetricsRequested)
     {
         var metricType = MapPrometheusType(metric.Type);
 
         Debug.Assert(!string.IsNullOrEmpty(metricType), $"{nameof(metricType)} should not be null or empty.");
 
         cursor = WriteAsciiStringNoEscape(buffer, cursor, "# TYPE ");
-        cursor = WriteMetricName(buffer, cursor, metric);
+        cursor = WriteMetricMetadataName(buffer, cursor, metric, openMetricsRequested);
         buffer[cursor++] = unchecked((byte)' ');
         cursor = WriteAsciiStringNoEscape(buffer, cursor, metricType);
 
@@ -302,7 +312,7 @@ internal static partial class PrometheusSerializer
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static int WriteUnitMetadata(byte[] buffer, int cursor, PrometheusMetric metric)
+    public static int WriteUnitMetadata(byte[] buffer, int cursor, PrometheusMetric metric, bool openMetricsRequested)
     {
         if (string.IsNullOrEmpty(metric.Unit))
         {
@@ -310,17 +320,142 @@ internal static partial class PrometheusSerializer
         }
 
         cursor = WriteAsciiStringNoEscape(buffer, cursor, "# UNIT ");
-        cursor = WriteMetricName(buffer, cursor, metric);
+        cursor = WriteMetricMetadataName(buffer, cursor, metric, openMetricsRequested);
 
         buffer[cursor++] = unchecked((byte)' ');
 
         // Unit name has already been escaped.
-        for (int i = 0; i < metric.Unit.Length; i++)
+        for (int i = 0; i < metric.Unit!.Length; i++)
         {
             var ordinal = (ushort)metric.Unit[i];
             buffer[cursor++] = unchecked((byte)ordinal);
         }
 
+        buffer[cursor++] = ASCII_LINEFEED;
+
+        return cursor;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int WriteScopeInfo(byte[] buffer, int cursor, string scopeName)
+    {
+        if (string.IsNullOrEmpty(scopeName))
+        {
+            return cursor;
+        }
+
+        cursor = WriteAsciiStringNoEscape(buffer, cursor, "# TYPE otel_scope_info info");
+        buffer[cursor++] = ASCII_LINEFEED;
+
+        cursor = WriteAsciiStringNoEscape(buffer, cursor, "# HELP otel_scope_info Scope metadata");
+        buffer[cursor++] = ASCII_LINEFEED;
+
+        cursor = WriteAsciiStringNoEscape(buffer, cursor, "otel_scope_info");
+        buffer[cursor++] = unchecked((byte)'{');
+        cursor = WriteLabel(buffer, cursor, "otel_scope_name", scopeName);
+        buffer[cursor++] = unchecked((byte)'}');
+        buffer[cursor++] = unchecked((byte)' ');
+        buffer[cursor++] = unchecked((byte)'1');
+        buffer[cursor++] = ASCII_LINEFEED;
+
+        return cursor;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int WriteTimestamp(byte[] buffer, int cursor, long value, bool useOpenMetrics)
+    {
+        if (useOpenMetrics)
+        {
+            cursor = WriteLong(buffer, cursor, value / 1000);
+            buffer[cursor++] = unchecked((byte)'.');
+
+            long millis = value % 1000;
+
+            if (millis < 100)
+            {
+                buffer[cursor++] = unchecked((byte)'0');
+            }
+
+            if (millis < 10)
+            {
+                buffer[cursor++] = unchecked((byte)'0');
+            }
+
+            return WriteLong(buffer, cursor, millis);
+        }
+
+        return WriteLong(buffer, cursor, value);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int WriteTags(byte[] buffer, int cursor, Metric metric, ReadOnlyTagCollection tags, bool writeEnclosingBraces = true)
+    {
+        if (writeEnclosingBraces)
+        {
+            buffer[cursor++] = unchecked((byte)'{');
+        }
+
+        cursor = WriteLabel(buffer, cursor, "otel_scope_name", metric.MeterName);
+        buffer[cursor++] = unchecked((byte)',');
+
+        if (!string.IsNullOrEmpty(metric.MeterVersion))
+        {
+            cursor = WriteLabel(buffer, cursor, "otel_scope_version", metric.MeterVersion);
+            buffer[cursor++] = unchecked((byte)',');
+        }
+
+        if (metric.MeterTags != null)
+        {
+            foreach (var tag in metric.MeterTags)
+            {
+                cursor = WriteLabel(buffer, cursor, tag.Key, tag.Value);
+                buffer[cursor++] = unchecked((byte)',');
+            }
+        }
+
+        foreach (var tag in tags)
+        {
+            cursor = WriteLabel(buffer, cursor, tag.Key, tag.Value);
+            buffer[cursor++] = unchecked((byte)',');
+        }
+
+        if (writeEnclosingBraces)
+        {
+            buffer[cursor - 1] = unchecked((byte)'}'); // Note: We write the '}' over the last written comma, which is extra.
+        }
+
+        return cursor;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int WriteTargetInfo(byte[] buffer, int cursor, Resource resource)
+    {
+        if (resource == Resource.Empty)
+        {
+            return cursor;
+        }
+
+        cursor = WriteAsciiStringNoEscape(buffer, cursor, "# TYPE target info");
+        buffer[cursor++] = ASCII_LINEFEED;
+
+        cursor = WriteAsciiStringNoEscape(buffer, cursor, "# HELP target Target metadata");
+        buffer[cursor++] = ASCII_LINEFEED;
+
+        cursor = WriteAsciiStringNoEscape(buffer, cursor, "target_info");
+        buffer[cursor++] = unchecked((byte)'{');
+
+        foreach (var attribute in resource.Attributes)
+        {
+            cursor = WriteLabel(buffer, cursor, attribute.Key, attribute.Value);
+
+            buffer[cursor++] = unchecked((byte)',');
+        }
+
+        cursor--; // Write over the last written comma
+
+        buffer[cursor++] = unchecked((byte)'}');
+        buffer[cursor++] = unchecked((byte)' ');
+        buffer[cursor++] = unchecked((byte)'1');
         buffer[cursor++] = ASCII_LINEFEED;
 
         return cursor;

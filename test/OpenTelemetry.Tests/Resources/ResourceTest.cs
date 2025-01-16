@@ -1,18 +1,5 @@
-// <copyright file="ResourceTest.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -39,7 +26,7 @@ public class ResourceTest : IDisposable
     public void CreateResource_NullAttributeCollection()
     {
         // Act and Assert
-        var resource = new Resource(null);
+        var resource = new Resource(null!);
         Assert.Empty(resource.Attributes);
     }
 
@@ -47,10 +34,10 @@ public class ResourceTest : IDisposable
     public void CreateResource_NullAttributeValue()
     {
         // Arrange
-        var attributes = new Dictionary<string, object> { { "NullValue", null } };
+        var attributes = new Dictionary<string, object?> { { "NullValue", null } };
 
         // Act and Assert
-        Assert.Throws<ArgumentException>(() => new Resource(attributes));
+        Assert.Throws<ArgumentException>(() => new Resource(attributes!));
     }
 
     [Fact]

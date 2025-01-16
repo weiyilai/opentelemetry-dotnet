@@ -1,68 +1,26 @@
-// <copyright file="OtlpExporterOptionsExtensions.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
 #if NETFRAMEWORK
 using System.Net.Http;
 #endif
+using System.Diagnostics;
 using System.Reflection;
-using Grpc.Core;
+using OpenTelemetry.Exporter.OpenTelemetryProtocol.Implementation;
 using OpenTelemetry.Exporter.OpenTelemetryProtocol.Implementation.ExportClient;
-#if NETSTANDARD2_1 || NET6_0_OR_GREATER
-using Grpc.Net.Client;
-#endif
-using LogOtlpCollector = OpenTelemetry.Proto.Collector.Logs.V1;
-using MetricsOtlpCollector = OpenTelemetry.Proto.Collector.Metrics.V1;
-using TraceOtlpCollector = OpenTelemetry.Proto.Collector.Trace.V1;
+using OpenTelemetry.Exporter.OpenTelemetryProtocol.Implementation.Transmission;
 
 namespace OpenTelemetry.Exporter;
 
 internal static class OtlpExporterOptionsExtensions
 {
-#if NETSTANDARD2_1 || NET6_0_OR_GREATER
-    public static GrpcChannel CreateChannel(this OtlpExporterOptions options)
-#else
-    public static Channel CreateChannel(this OtlpExporterOptions options)
-#endif
-    {
-        if (options.Endpoint.Scheme != Uri.UriSchemeHttp && options.Endpoint.Scheme != Uri.UriSchemeHttps)
-        {
-            throw new NotSupportedException($"Endpoint URI scheme ({options.Endpoint.Scheme}) is not supported. Currently only \"http\" and \"https\" are supported.");
-        }
+    private const string TraceGrpcServicePath = "opentelemetry.proto.collector.trace.v1.TraceService/Export";
+    private const string MetricsGrpcServicePath = "opentelemetry.proto.collector.metrics.v1.MetricsService/Export";
+    private const string LogsGrpcServicePath = "opentelemetry.proto.collector.logs.v1.LogsService/Export";
 
-#if NETSTANDARD2_1 || NET6_0_OR_GREATER
-        return GrpcChannel.ForAddress(options.Endpoint);
-#else
-        ChannelCredentials channelCredentials;
-        if (options.Endpoint.Scheme == Uri.UriSchemeHttps)
-        {
-            channelCredentials = new SslCredentials();
-        }
-        else
-        {
-            channelCredentials = ChannelCredentials.Insecure;
-        }
-
-        return new Channel(options.Endpoint.Authority, channelCredentials);
-#endif
-    }
-
-    public static Metadata GetMetadataFromHeaders(this OtlpExporterOptions options)
-    {
-        return options.GetHeaders<Metadata>((m, k, v) => m.Add(k, v));
-    }
+    private const string TraceHttpServicePath = "v1/traces";
+    private const string MetricsHttpServicePath = "v1/metrics";
+    private const string LogsHttpServicePath = "v1/logs";
 
     public static THeaders GetHeaders<THeaders>(this OtlpExporterOptions options, Action<THeaders, string, string> addHeader)
         where THeaders : new()
@@ -71,6 +29,9 @@ internal static class OtlpExporterOptionsExtensions
         var headers = new THeaders();
         if (!string.IsNullOrEmpty(optionHeaders))
         {
+            // According to the specification, URL-encoded headers must be supported.
+            optionHeaders = Uri.UnescapeDataString(optionHeaders);
+
             Array.ForEach(
                 optionHeaders.Split(','),
                 (pair) =>
@@ -97,35 +58,62 @@ internal static class OtlpExporterOptionsExtensions
         return headers;
     }
 
-    public static IExportClient<TraceOtlpCollector.ExportTraceServiceRequest> GetTraceExportClient(this OtlpExporterOptions options) =>
-        options.Protocol switch
-        {
-            OtlpExportProtocol.Grpc => new OtlpGrpcTraceExportClient(options),
-            OtlpExportProtocol.HttpProtobuf => new OtlpHttpTraceExportClient(
-                options,
-                options.HttpClientFactory?.Invoke() ?? throw new InvalidOperationException("OtlpExporterOptions was missing HttpClientFactory or it returned null.")),
-            _ => throw new NotSupportedException($"Protocol {options.Protocol} is not supported."),
-        };
+    public static OtlpExporterTransmissionHandler GetExportTransmissionHandler(this OtlpExporterOptions options, ExperimentalOptions experimentalOptions, OtlpSignalType otlpSignalType)
+    {
+        var exportClient = GetExportClient(options, otlpSignalType);
 
-    public static IExportClient<MetricsOtlpCollector.ExportMetricsServiceRequest> GetMetricsExportClient(this OtlpExporterOptions options) =>
-        options.Protocol switch
-        {
-            OtlpExportProtocol.Grpc => new OtlpGrpcMetricsExportClient(options),
-            OtlpExportProtocol.HttpProtobuf => new OtlpHttpMetricsExportClient(
-                options,
-                options.HttpClientFactory?.Invoke() ?? throw new InvalidOperationException("OtlpExporterOptions was missing HttpClientFactory or it returned null.")),
-            _ => throw new NotSupportedException($"Protocol {options.Protocol} is not supported."),
-        };
+        // `HttpClient.Timeout.TotalMilliseconds` would be populated with the correct timeout value for both the exporter configuration cases:
+        // 1. User provides their own HttpClient. This case is straightforward as the user wants to use their `HttpClient` and thereby the same client's timeout value.
+        // 2. If the user configures timeout via the exporter options, then the timeout set for the `HttpClient` initialized by the exporter will be set to user provided value.
+        double timeoutMilliseconds = exportClient is OtlpHttpExportClient httpTraceExportClient
+            ? httpTraceExportClient.HttpClient.Timeout.TotalMilliseconds
+            : options.TimeoutMilliseconds;
 
-    public static IExportClient<LogOtlpCollector.ExportLogsServiceRequest> GetLogExportClient(this OtlpExporterOptions options) =>
-        options.Protocol switch
+        if (experimentalOptions.EnableInMemoryRetry)
         {
-            OtlpExportProtocol.Grpc => new OtlpGrpcLogExportClient(options),
-            OtlpExportProtocol.HttpProtobuf => new OtlpHttpLogExportClient(
-                options,
-                options.HttpClientFactory?.Invoke() ?? throw new InvalidOperationException("OtlpExporterOptions was missing HttpClientFactory or it returned null.")),
-            _ => throw new NotSupportedException($"Protocol {options.Protocol} is not supported."),
+            return new OtlpExporterRetryTransmissionHandler(exportClient, timeoutMilliseconds);
+        }
+        else if (experimentalOptions.EnableDiskRetry)
+        {
+            Debug.Assert(!string.IsNullOrEmpty(experimentalOptions.DiskRetryDirectoryPath), $"{nameof(experimentalOptions.DiskRetryDirectoryPath)} is null or empty");
+
+            return new OtlpExporterPersistentStorageTransmissionHandler(
+                exportClient,
+                timeoutMilliseconds,
+                Path.Combine(experimentalOptions.DiskRetryDirectoryPath, "traces"));
+        }
+        else
+        {
+            return new OtlpExporterTransmissionHandler(exportClient, timeoutMilliseconds);
+        }
+    }
+
+    public static IExportClient GetExportClient(this OtlpExporterOptions options, OtlpSignalType otlpSignalType)
+    {
+        var httpClient = options.HttpClientFactory?.Invoke() ?? throw new InvalidOperationException("OtlpExporterOptions was missing HttpClientFactory or it returned null.");
+
+        if (options.Protocol != OtlpExportProtocol.Grpc && options.Protocol != OtlpExportProtocol.HttpProtobuf)
+        {
+            throw new NotSupportedException($"Protocol {options.Protocol} is not supported.");
+        }
+
+        return otlpSignalType switch
+        {
+            OtlpSignalType.Traces => options.Protocol == OtlpExportProtocol.Grpc
+                ? new OtlpGrpcExportClient(options, httpClient, TraceGrpcServicePath)
+                : new OtlpHttpExportClient(options, httpClient, TraceHttpServicePath),
+
+            OtlpSignalType.Metrics => options.Protocol == OtlpExportProtocol.Grpc
+                ? new OtlpGrpcExportClient(options, httpClient, MetricsGrpcServicePath)
+                : new OtlpHttpExportClient(options, httpClient, MetricsHttpServicePath),
+
+            OtlpSignalType.Logs => options.Protocol == OtlpExportProtocol.Grpc
+                ? new OtlpGrpcExportClient(options, httpClient, LogsGrpcServicePath)
+                : new OtlpHttpExportClient(options, httpClient, LogsHttpServicePath),
+
+            _ => throw new NotSupportedException($"OtlpSignalType {otlpSignalType} is not supported."),
         };
+    }
 
     public static void TryEnableIHttpClientFactoryIntegration(this OtlpExporterOptions options, IServiceProvider serviceProvider, string httpClientName)
     {
@@ -135,13 +123,13 @@ internal static class OtlpExporterOptionsExtensions
         {
             options.HttpClientFactory = () =>
             {
-                Type httpClientFactoryType = Type.GetType("System.Net.Http.IHttpClientFactory, Microsoft.Extensions.Http", throwOnError: false);
+                Type? httpClientFactoryType = Type.GetType("System.Net.Http.IHttpClientFactory, Microsoft.Extensions.Http", throwOnError: false);
                 if (httpClientFactoryType != null)
                 {
-                    object httpClientFactory = serviceProvider.GetService(httpClientFactoryType);
+                    object? httpClientFactory = serviceProvider.GetService(httpClientFactoryType);
                     if (httpClientFactory != null)
                     {
-                        MethodInfo createClientMethod = httpClientFactoryType.GetMethod(
+                        MethodInfo? createClientMethod = httpClientFactoryType.GetMethod(
                             "CreateClient",
                             BindingFlags.Public | BindingFlags.Instance,
                             binder: null,
@@ -149,11 +137,14 @@ internal static class OtlpExporterOptionsExtensions
                             modifiers: null);
                         if (createClientMethod != null)
                         {
-                            HttpClient client = (HttpClient)createClientMethod.Invoke(httpClientFactory, new object[] { httpClientName });
+                            HttpClient? client = (HttpClient?)createClientMethod.Invoke(httpClientFactory, new object[] { httpClientName });
 
-                            client.Timeout = TimeSpan.FromMilliseconds(options.TimeoutMilliseconds);
+                            if (client != null)
+                            {
+                                client.Timeout = TimeSpan.FromMilliseconds(options.TimeoutMilliseconds);
 
-                            return client;
+                                return client;
+                            }
                         }
                     }
                 }

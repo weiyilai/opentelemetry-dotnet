@@ -6,7 +6,7 @@ Quick links:
 * [Building your own instrumentation library](#instrumentation-library)
 * [Building your own processor](#processor)
 * [Building your own sampler](#sampler)
-* [Building your own resource detector](#resource-detector)
+* [Building your own resource detector](../../resources/README.md#resource-detector)
 * [Registration extension method guidance for library authors](#registration-extension-method-guidance-for-library-authors)
 * [References](#references)
 
@@ -38,7 +38,10 @@ not covered by the built-in exporters:
 * Exporters should avoid generating telemetry and causing live-loop, this can be
   done via `OpenTelemetry.SuppressInstrumentationScope`.
 * Exporters should use `Activity.TagObjects` collection instead of
-  `Activity.Tags` to obtain the full set of attributes (tags).
+  `Activity.Tags` to obtain the full set of attributes (tags). `Activity.Tags` only
+   returns tags whose value are of type `string` ([source](https://source.dot.net/#System.Diagnostics.DiagnosticSource/System/Diagnostics/Activity.cs,74de547549e574e0,references)).
+  For improved performance, use [Activity.EnumerateTagObjects](https://learn.microsoft.com/en-us/dotnet/api/system.diagnostics.activity.enumeratetagobjects?view=net-8.0)
+  if planning to enumerate over all TagObjects.
 * Exporters should use `ParentProvider.GetResource()` to get the `Resource`
   associated with the provider.
 
@@ -107,11 +110,7 @@ the following instrumentation libraries. The individual docs for them describes
 the library they instrument, and steps for enabling them.
 
 * [ASP.NET
-  Core](../../../src/OpenTelemetry.Instrumentation.AspNetCore/README.md)
-* [gRPC
-  client](../../../src/OpenTelemetry.Instrumentation.GrpcNetClient/README.md)
-* [HTTP clients](../../../src/OpenTelemetry.Instrumentation.Http/README.md)
-* [SQL client](../../../src/OpenTelemetry.Instrumentation.SqlClient/README.md)
+  Core](https://github.com/open-telemetry/opentelemetry-dotnet-contrib/tree/main/src/OpenTelemetry.Instrumentation.AspNetCore/README.md)
 
 More community contributed instrumentations are available in [OpenTelemetry .NET
 Contrib](https://github.com/open-telemetry/opentelemetry-dotnet-contrib/tree/main/src).
@@ -123,7 +122,7 @@ guidelines.
 This section describes the steps required to write a custom instrumentation
 library.
 
-> **Note**
+> [!NOTE]
 > If you are writing a new library or modifying an existing library the
 recommendation is to use the [ActivitySource API/OpenTelemetry
 API](../../../src/OpenTelemetry.Api/README.md#introduction-to-opentelemetry-net-tracing-api)
@@ -142,10 +141,10 @@ Writing an instrumentation library typically involves 3 steps.
    itself. For example, System.Data.SqlClient when running on .NET Framework
    happens to publish events using an `EventSource` which the [SqlClient
    instrumentation
-   library](../../../src/OpenTelemetry.Instrumentation.SqlClient/Implementation/SqlEventSourceListener.netfx.cs)
+   library](https://github.com/open-telemetry/opentelemetry-dotnet-contrib/blob/main/src/OpenTelemetry.Instrumentation.SqlClient/Implementation/SqlEventSourceListener.netfx.cs)
    listens to in order to trigger code as Sql commands are executed. The [.NET
    Framework HttpWebRequest
-   instrumentation](../../../src/OpenTelemetry.Instrumentation.Http/Implementation/HttpWebRequestActivitySource.netfx.cs)
+   instrumentation](https://github.com/open-telemetry/opentelemetry-dotnet-contrib/tree/main/src/OpenTelemetry.Instrumentation.Http/Implementation/HttpWebRequestActivitySource.netfx.cs)
    patches the runtime code (using reflection) and swaps a static reference that
    gets invoked as requests are processed for custom code. Every library will be
    different.
@@ -180,35 +179,36 @@ Writing an instrumentation library typically involves 3 steps.
     * If the instrumentation library requires state management tied to that of
        `TracerProvider` then it should:
 
-       * Implement `IDisposable`.
+      * Implement `IDisposable`.
 
-       * Provide an extension method which calls `AddSource` (to enable its
-         `ActivitySource`) and `AddInstrumentation` (to enable state management)
-         on the `TracerProviderBuilder` being configured.
+      * Provide an extension method which calls `AddSource` (to enable its
+        `ActivitySource`) and `AddInstrumentation` (to enable state management)
+        on the `TracerProviderBuilder` being configured.
 
-       An example instrumentation using this approach is [SqlClient
-       instrumentation](../../../src/OpenTelemetry.Instrumentation.SqlClient/TracerProviderBuilderExtensions.cs).
+        An example instrumentation using this approach is [SqlClient
+        instrumentation](https://github.com/open-telemetry/opentelemetry-dotnet-contrib/blob/main/src/OpenTelemetry.Instrumentation.SqlClient/TracerProviderBuilderExtensions.cs).
 
-       **CAUTION**: The instrumentation libraries requiring state management are
-       usually hard to auto-instrument. Therefore, they take the risk of not
-       being supported by [OpenTelemetry .NET Automatic
-       Instrumentation](https://github.com/open-telemetry/opentelemetry-dotnet-instrumentation).
+      > [!WARNING]
+      > The instrumentation libraries requiring state management are
+      usually hard to auto-instrument. Therefore, they take the risk of not
+      being supported by [OpenTelemetry .NET Automatic
+      Instrumentation](https://github.com/open-telemetry/opentelemetry-dotnet-instrumentation).
 
     * If the instrumentation library does not require any state management, then
       providing an extension method is optional.
 
-       * If an extension is provided it should call `AddSource` on the
-         `TracerProviderBuilder` being configured to enable its
-         `ActivitySource`.
+      * If an extension is provided it should call `AddSource` on the
+        `TracerProviderBuilder` being configured to enable its
+        `ActivitySource`.
 
-       * If an extension is not provided, then the name of the `ActivitySource`
-         used by the instrumented library must be documented so that end users
-         can enable it by calling `AddSource` on the `TracerProviderBuilder`
-         being configured.
+      * If an extension is not provided, then the name of the `ActivitySource`
+        used by the instrumented library must be documented so that end users
+        can enable it by calling `AddSource` on the `TracerProviderBuilder`
+        being configured.
 
-         > **Note**
-         > Changing the name of the source should be considered a
-         breaking change.
+        > [!NOTE]
+        > Changing the name of the source should be considered a
+        breaking change.
 
 ### Special case : Instrumentation for libraries producing legacy Activity
 
@@ -224,13 +224,13 @@ activities does not by default runs through the sampler, and will have their
 with it.
 
 Some common examples of such libraries include [ASP.NET
-Core](../../../src/OpenTelemetry.Instrumentation.AspNetCore/README.md), [HTTP
-client .NET Core](../../../src/OpenTelemetry.Instrumentation.Http/README.md) .
+Core](https://github.com/open-telemetry/opentelemetry-dotnet-contrib/tree/main/src/OpenTelemetry.Instrumentation.AspNetCore/README.md).
 Instrumentation libraries for these are already provided in this repo. The
 [OpenTelemetry .NET
 Contrib](https://github.com/open-telemetry/opentelemetry-dotnet-contrib)
 repository also has instrumentations for libraries like
 [ElasticSearchClient](https://github.com/open-telemetry/opentelemetry-dotnet-contrib/tree/main/src/OpenTelemetry.Instrumentation.ElasticsearchClient)
+and [HTTP client .NET Core](https://github.com/open-telemetry/opentelemetry-dotnet-contrib/tree/main/src/OpenTelemetry.Instrumentation.Http/README.md)
 etc. which fall in this category.
 
 If you are writing instrumentation for such library, it is recommended to refer
@@ -255,6 +255,11 @@ Custom processors can be implemented to cover more scenarios:
   and `OnShutdown`.
 * `OnStart` and `OnEnd` should be thread safe, and should not block or take long
   time, since they will be called on critical code path.
+* Processors should use `Activity.TagObjects` collection instead of
+  `Activity.Tags` to obtain the full set of attributes (tags). `Activity.Tags` only
+   returns tags whose value are of type `string` ([source](https://source.dot.net/#System.Diagnostics.DiagnosticSource/System/Diagnostics/Activity.cs,74de547549e574e0,references)).
+  For improved performance, use [Activity.EnumerateTagObjects](https://learn.microsoft.com/en-us/dotnet/api/system.diagnostics.activity.enumeratetagobjects?view=net-8.0)
+  if planning to enumerate over all TagObjects.
 
 ```csharp
 class MyProcessor : BaseProcessor<Activity>
@@ -315,10 +320,10 @@ cases, it is recommended to use that option as it offers higher performance.
 
 OpenTelemetry .NET SDK has provided the following built-in samplers:
 
-* [AlwaysOffSampler](../../../src/OpenTelemetry/Trace/AlwaysOffSampler.cs)
-* [AlwaysOnSampler](../../../src/OpenTelemetry/Trace/AlwaysOnSampler.cs)
-* [ParentBasedSampler](../../../src/OpenTelemetry/Trace/ParentBasedSampler.cs)
-* [TraceIdRatioBasedSampler](../../../src/OpenTelemetry/Trace/TraceIdRatioBasedSampler.cs)
+* [AlwaysOffSampler](../../../src/OpenTelemetry/Trace/Sampler/AlwaysOffSampler.cs)
+* [AlwaysOnSampler](../../../src/OpenTelemetry/Trace/Sampler/AlwaysOnSampler.cs)
+* [ParentBasedSampler](../../../src/OpenTelemetry/Trace/Sampler/ParentBasedSampler.cs)
+* [TraceIdRatioBasedSampler](../../../src/OpenTelemetry/Trace/Sampler/TraceIdRatioBasedSampler.cs)
 
 Custom samplers can be implemented to cover more scenarios:
 
@@ -333,31 +338,16 @@ class MySampler : Sampler
 {
     public override SamplingResult ShouldSample(in SamplingParameters samplingParameters)
     {
-        return new SamplingResult(SamplingDecision.RecordAndSampled);
+        return new SamplingResult(SamplingDecision.RecordAndSample);
     }
 }
 ```
 
 A demo sampler is shown [here](./MySampler.cs).
 
-## Resource Detector
-
-OpenTelemetry .NET SDK provides a resource detector for detecting resource
-information from the `OTEL_RESOURCE_ATTRIBUTES` and `OTEL_SERVICE_NAME`
-environment variables.
-
-Custom resource detectors can be implemented:
-
-* ResourceDetectors should inherit from
-  `OpenTelemetry.Resources.IResourceDetector`, (which belongs to the
-  [OpenTelemetry](../../../src/OpenTelemetry/README.md) package), and implement
-  the `Detect` method.
-
-A demo ResourceDetector is shown [here](./MyResourceDetector.cs).
-
 ## Registration extension method guidance for library authors
 
-> **Note**
+> [!NOTE]
 > This information applies to the OpenTelemetry SDK version 1.4.0 and
 newer only.
 
@@ -366,7 +356,7 @@ register custom OpenTelemetry components into their `TracerProvider`s. These
 extension methods can target either the `TracerProviderBuilder` or the
 `IServiceCollection` classes. Both of these patterns are described below.
 
-> **Note**
+> [!NOTE]
 > Libraries providing SDK plugins such as exporters, resource detectors,
 and/or samplers should take a dependency on the [OpenTelemetry SDK
 package](https://www.nuget.org/packages/opentelemetry). Library authors
@@ -402,7 +392,7 @@ When providing registration extensions:
   from starting. The OpenTelemetry SDK is allowed to crash if it cannot be
   started. It **MUST NOT** crash once running.
 
-> **Note**
+> [!NOTE]
 > The SDK implementation of `TracerProviderBuilder` ensures that the
 [.NET
 Configuration](https://learn.microsoft.com/en-us/dotnet/core/extensions/configuration)
@@ -631,7 +621,7 @@ single `AddMyLibrary` extension to configure the library itself and optionally
 turn on OpenTelemetry integration for multiple signals (tracing & metrics in
 this case).
 
-> **Note**
+> [!NOTE]
 > `ConfigureOpenTelemetryTracerProvider` and
 `ConfigureOpenTelemetryMeterProvider` do not automatically start OpenTelemetry.
 The host is responsible for either calling `AddOpenTelemetry` in the

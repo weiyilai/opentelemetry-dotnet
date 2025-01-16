@@ -1,24 +1,12 @@
-// <copyright file="OpenTelemetrySdkEventSource.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
 using System.Diagnostics;
-#if NET6_0_OR_GREATER
+#if NET
 using System.Diagnostics.CodeAnalysis;
 #endif
 using System.Diagnostics.Tracing;
+using Microsoft.Extensions.Configuration;
 
 namespace OpenTelemetry.Internal;
 
@@ -26,7 +14,7 @@ namespace OpenTelemetry.Internal;
 /// EventSource implementation for OpenTelemetry SDK implementation.
 /// </summary>
 [EventSource(Name = "OpenTelemetry-Sdk")]
-internal sealed class OpenTelemetrySdkEventSource : EventSource
+internal sealed class OpenTelemetrySdkEventSource : EventSource, IConfigurationExtensionsLogger
 {
     public static OpenTelemetrySdkEventSource Log = new();
 #if DEBUG
@@ -170,6 +158,15 @@ internal sealed class OpenTelemetrySdkEventSource : EventSource
         }
     }
 
+    [NonEvent]
+    public void MetricViewException(string source, Exception ex)
+    {
+        if (this.IsEnabled(EventLevel.Error, EventKeywords.All))
+        {
+            this.MetricViewException(source, ex.ToInvariantString());
+        }
+    }
+
     [Event(4, Message = "Unknown error in SpanProcessor event '{0}': '{1}'.", Level = EventLevel.Error)]
     public void SpanProcessorException(string evnt, string ex)
     {
@@ -218,7 +215,7 @@ internal sealed class OpenTelemetrySdkEventSource : EventSource
         this.WriteEvent(31, exportProcessorName, exporterName);
     }
 
-#if NET6_0_OR_GREATER
+#if NET
     [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2026:RequiresUnreferencedCode", Justification = "Parameters to this method are primitive and are trimmer safe.")]
 #endif
     [Event(32, Message = "'{0}' exporting to '{1}' dropped '{2}' item(s) due to buffer full.", Level = EventLevel.Warning)]
@@ -227,7 +224,7 @@ internal sealed class OpenTelemetrySdkEventSource : EventSource
         this.WriteEvent(32, exportProcessorName, exporterName, droppedCount);
     }
 
-#if NET6_0_OR_GREATER
+#if NET
     [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2026:RequiresUnreferencedCode", Justification = "Parameters to this method are primitive and are trimmer safe.")]
 #endif
     [Event(33, Message = "Measurements from Instrument '{0}', Meter '{1}' will be ignored. Reason: '{2}'. Suggested action: '{3}'", Level = EventLevel.Warning)]
@@ -260,7 +257,7 @@ internal sealed class OpenTelemetrySdkEventSource : EventSource
         this.WriteEvent(37, providerName);
     }
 
-#if NET6_0_OR_GREATER
+#if NET
     [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2026:RequiresUnreferencedCode", Justification = "Parameters to this method are primitive and are trimmer safe.")]
 #endif
     [Event(38, Message = "Duplicate Instrument '{0}', Meter '{1}' encountered. Reason: '{2}'. Suggested action: '{3}'", Level = EventLevel.Warning)]
@@ -281,7 +278,7 @@ internal sealed class OpenTelemetrySdkEventSource : EventSource
         this.WriteEvent(40, message);
     }
 
-#if NET6_0_OR_GREATER
+#if NET
     [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2026:RequiresUnreferencedCode", Justification = "Parameters to this method are primitive and are trimmer safe.")]
 #endif
     [Event(41, Message = "View Configuration ignored for Instrument '{0}', Meter '{1}'. Reason: '{2}'. Measurements from the instrument will use default configuration for Aggregation. Suggested action: '{3}'", Level = EventLevel.Warning)]
@@ -290,7 +287,7 @@ internal sealed class OpenTelemetrySdkEventSource : EventSource
         this.WriteEvent(41, instrumentName, meterName, reason, fix);
     }
 
-#if NET6_0_OR_GREATER
+#if NET
     [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2026:RequiresUnreferencedCode", Justification = "Parameters to this method are primitive and are trimmer safe.")]
 #endif
     [Event(43, Message = "ForceFlush invoked for processor type '{0}' returned result '{1}'.", Level = EventLevel.Verbose)]
@@ -317,8 +314,8 @@ internal sealed class OpenTelemetrySdkEventSource : EventSource
         this.WriteEvent(46, message);
     }
 
-    [Event(47, Message = "{0} environment variable has an invalid value: '{1}'", Level = EventLevel.Warning)]
-    public void InvalidEnvironmentVariable(string key, string? value)
+    [Event(47, Message = "Configuration key '{0}' has an invalid value: '{1}'", Level = EventLevel.Warning)]
+    public void InvalidConfigurationValue(string key, string? value)
     {
         this.WriteEvent(47, key, value);
     }
@@ -347,16 +344,51 @@ internal sealed class OpenTelemetrySdkEventSource : EventSource
         this.WriteEvent(51, type, reason);
     }
 
+    [Event(52, Message = "Instrument '{0}', Meter '{1}' has been deactivated.", Level = EventLevel.Informational)]
+    public void MetricInstrumentDeactivated(string instrumentName, string meterName)
+    {
+        this.WriteEvent(52, instrumentName, meterName);
+    }
+
+    [Event(53, Message = "Instrument '{0}', Meter '{1}' has been removed.", Level = EventLevel.Informational)]
+    public void MetricInstrumentRemoved(string instrumentName, string meterName)
+    {
+        this.WriteEvent(53, instrumentName, meterName);
+    }
+
+    [Event(54, Message = "OTEL_TRACES_SAMPLER configuration was found but the value '{0}' is invalid and will be ignored.", Level = EventLevel.Warning)]
+    public void TracesSamplerConfigInvalid(string configValue)
+    {
+        this.WriteEvent(54, configValue);
+    }
+
+    [Event(55, Message = "OTEL_TRACES_SAMPLER_ARG configuration was found but the value '{0}' is invalid and will be ignored, default of value of '1.0' will be used.", Level = EventLevel.Warning)]
+    public void TracesSamplerArgConfigInvalid(string configValue)
+    {
+        this.WriteEvent(55, configValue);
+    }
+
+    [Event(56, Message = "Exception thrown by user code supplied on metric view ('{0}'): '{1}'.", Level = EventLevel.Error)]
+    public void MetricViewException(string source, string ex)
+    {
+        this.WriteEvent(56, source, ex);
+    }
+
+    void IConfigurationExtensionsLogger.LogInvalidConfigurationValue(string key, string value)
+    {
+        this.InvalidConfigurationValue(key, value);
+    }
+
 #if DEBUG
     public class OpenTelemetryEventListener : EventListener
     {
-        private readonly List<EventSource> eventSources = new();
+        private readonly Dictionary<string, EventSource> eventSources = new();
 
         public override void Dispose()
         {
-            foreach (EventSource eventSource in this.eventSources)
+            foreach (var kvp in this.eventSources)
             {
-                this.DisableEvents(eventSource);
+                this.DisableEvents(kvp.Value);
             }
 
             base.Dispose();
@@ -367,7 +399,7 @@ internal sealed class OpenTelemetrySdkEventSource : EventSource
         {
             if (eventSource.Name.StartsWith("OpenTelemetry", StringComparison.OrdinalIgnoreCase))
             {
-                this.eventSources.Add(eventSource);
+                this.eventSources.Add(eventSource.Name, eventSource);
                 this.EnableEvents(eventSource, EventLevel.Verbose, EventKeywords.All);
             }
 
@@ -376,6 +408,11 @@ internal sealed class OpenTelemetrySdkEventSource : EventSource
 
         protected override void OnEventWritten(EventWrittenEventArgs e)
         {
+            if (!this.eventSources.ContainsKey(e.EventSource.Name))
+            {
+                return;
+            }
+
             string? message;
             if (e.Message != null && e.Payload != null && e.Payload.Count > 0)
             {

@@ -1,25 +1,13 @@
-// <copyright file="OtlpMetricExporter.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
+using System.Buffers.Binary;
+using System.Diagnostics;
 using OpenTelemetry.Exporter.OpenTelemetryProtocol.Implementation;
-using OpenTelemetry.Exporter.OpenTelemetryProtocol.Implementation.ExportClient;
-using OpenTelemetry.Internal;
+using OpenTelemetry.Exporter.OpenTelemetryProtocol.Implementation.Serializer;
+using OpenTelemetry.Exporter.OpenTelemetryProtocol.Implementation.Transmission;
 using OpenTelemetry.Metrics;
-using OtlpCollector = OpenTelemetry.Proto.Collector.Metrics.V1;
-using OtlpResource = OpenTelemetry.Proto.Resource.V1;
+using OpenTelemetry.Resources;
 
 namespace OpenTelemetry.Exporter;
 
@@ -29,49 +17,45 @@ namespace OpenTelemetry.Exporter;
 /// </summary>
 public class OtlpMetricExporter : BaseExporter<Metric>
 {
-    private readonly IExportClient<OtlpCollector.ExportMetricsServiceRequest> exportClient;
+    private const int GrpcStartWritePosition = 5;
+    private readonly OtlpExporterTransmissionHandler transmissionHandler;
+    private readonly int startWritePosition;
 
-    private OtlpResource.Resource processResource;
+    private Resource? resource;
+
+    // Initial buffer size set to ~732KB.
+    // This choice allows us to gradually grow the buffer while targeting a final capacity of around 100 MB,
+    // by the 7th doubling to maintain efficient allocation without frequent resizing.
+    private byte[] buffer = new byte[750000];
 
     /// <summary>
     /// Initializes a new instance of the <see cref="OtlpMetricExporter"/> class.
     /// </summary>
     /// <param name="options">Configuration options for the exporter.</param>
     public OtlpMetricExporter(OtlpExporterOptions options)
-        : this(options, null)
+        : this(options, experimentalOptions: new(), transmissionHandler: null)
     {
     }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="OtlpMetricExporter"/> class.
     /// </summary>
-    /// <param name="options">Configuration options for the export.</param>
-    /// <param name="exportClient">Client used for sending export request.</param>
-    internal OtlpMetricExporter(OtlpExporterOptions options, IExportClient<OtlpCollector.ExportMetricsServiceRequest> exportClient = null)
+    /// <param name="exporterOptions"><see cref="OtlpExporterOptions"/>.</param>
+    /// <param name="experimentalOptions"><see cref="ExperimentalOptions"/>.</param>
+    /// <param name="transmissionHandler"><see cref="OtlpExporterTransmissionHandler"/>.</param>
+    internal OtlpMetricExporter(
+        OtlpExporterOptions exporterOptions,
+        ExperimentalOptions experimentalOptions,
+        OtlpExporterTransmissionHandler? transmissionHandler = null)
     {
-        // Each of the Otlp exporters: Traces, Metrics, and Logs set the same value for `OtlpKeyValueTransformer.LogUnsupportedAttributeType`
-        // and `ConfigurationExtensions.LogInvalidEnvironmentVariable` so it should be fine even if these exporters are used together.
-        OtlpKeyValueTransformer.LogUnsupportedAttributeType = (string tagValueType, string tagKey) =>
-        {
-            OpenTelemetryProtocolExporterEventSource.Log.UnsupportedAttributeType(tagValueType, tagKey);
-        };
+        Debug.Assert(exporterOptions != null, "exporterOptions was null");
+        Debug.Assert(experimentalOptions != null, "experimentalOptions was null");
 
-        ConfigurationExtensions.LogInvalidEnvironmentVariable = (string key, string value) =>
-        {
-            OpenTelemetryProtocolExporterEventSource.Log.InvalidEnvironmentVariable(key, value);
-        };
-
-        if (exportClient != null)
-        {
-            this.exportClient = exportClient;
-        }
-        else
-        {
-            this.exportClient = options.GetMetricsExportClient();
-        }
+        this.startWritePosition = exporterOptions!.Protocol == OtlpExportProtocol.Grpc ? GrpcStartWritePosition : 0;
+        this.transmissionHandler = transmissionHandler ?? exporterOptions!.GetExportTransmissionHandler(experimentalOptions!, OtlpSignalType.Metrics);
     }
 
-    internal OtlpResource.Resource ProcessResource => this.processResource ??= this.ParentProvider.GetResource().ToOtlpResource();
+    internal Resource Resource => this.resource ??= this.ParentProvider.GetResource();
 
     /// <inheritdoc />
     public override ExportResult Export(in Batch<Metric> metrics)
@@ -79,13 +63,22 @@ public class OtlpMetricExporter : BaseExporter<Metric>
         // Prevents the exporter's gRPC and HTTP operations from being instrumented.
         using var scope = SuppressInstrumentationScope.Begin();
 
-        var request = new OtlpCollector.ExportMetricsServiceRequest();
-
         try
         {
-            request.AddMetrics(this.ProcessResource, metrics);
+            int writePosition = ProtobufOtlpMetricSerializer.WriteMetricsData(ref this.buffer, this.startWritePosition, this.Resource, metrics);
 
-            if (!this.exportClient.SendExportRequest(request))
+            if (this.startWritePosition == GrpcStartWritePosition)
+            {
+                // Grpc payload consists of 3 parts
+                // byte 0 - Specifying if the payload is compressed.
+                // 1-4 byte - Specifies the length of payload in big endian format.
+                // 5 and above -  Protobuf serialized data.
+                Span<byte> data = new Span<byte>(this.buffer, 1, 4);
+                var dataLength = writePosition - GrpcStartWritePosition;
+                BinaryPrimitives.WriteUInt32BigEndian(data, (uint)dataLength);
+            }
+
+            if (!this.transmissionHandler.TrySubmitRequest(this.buffer, writePosition))
             {
                 return ExportResult.Failure;
             }
@@ -95,17 +88,10 @@ public class OtlpMetricExporter : BaseExporter<Metric>
             OpenTelemetryProtocolExporterEventSource.Log.ExportMethodException(ex);
             return ExportResult.Failure;
         }
-        finally
-        {
-            request.Return();
-        }
 
         return ExportResult.Success;
     }
 
     /// <inheritdoc />
-    protected override bool OnShutdown(int timeoutMilliseconds)
-    {
-        return this.exportClient?.Shutdown(timeoutMilliseconds) ?? true;
-    }
+    protected override bool OnShutdown(int timeoutMilliseconds) => this.transmissionHandler.Shutdown(timeoutMilliseconds);
 }

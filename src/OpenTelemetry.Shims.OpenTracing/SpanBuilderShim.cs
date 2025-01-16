@@ -1,18 +1,5 @@
-// <copyright file="SpanBuilderShim.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
 using OpenTelemetry.Internal;
 using OpenTelemetry.Trace;
@@ -45,12 +32,12 @@ internal sealed class SpanBuilderShim : ISpanBuilder
     /// <summary>
     /// The OpenTelemetry attributes. These correspond to OpenTracing Tags.
     /// </summary>
-    private readonly List<KeyValuePair<string, object>> attributes = new();
+    private readonly SpanAttributes attributes = new();
 
     /// <summary>
     /// The parent as an TelemetrySpan, if any.
     /// </summary>
-    private TelemetrySpan parentSpan;
+    private TelemetrySpan? parentSpan;
 
     /// <summary>
     /// The parent as an SpanContext, if any.
@@ -83,7 +70,7 @@ internal sealed class SpanBuilderShim : ISpanBuilder
     private bool ParentSet => this.parentSpan != null || this.parentSpanContext.IsValid;
 
     /// <inheritdoc/>
-    public ISpanBuilder AsChildOf(ISpanContext parent)
+    public ISpanBuilder AsChildOf(ISpanContext? parent)
     {
         if (parent == null)
         {
@@ -94,7 +81,7 @@ internal sealed class SpanBuilderShim : ISpanBuilder
     }
 
     /// <inheritdoc/>
-    public ISpanBuilder AsChildOf(ISpan parent)
+    public ISpanBuilder AsChildOf(ISpan? parent)
     {
         if (parent == null)
         {
@@ -111,7 +98,7 @@ internal sealed class SpanBuilderShim : ISpanBuilder
     }
 
     /// <inheritdoc/>
-    public ISpanBuilder AddReference(string referenceType, ISpanContext referencedContext)
+    public ISpanBuilder AddReference(string referenceType, ISpanContext? referencedContext)
     {
         if (referencedContext == null)
         {
@@ -145,30 +132,25 @@ internal sealed class SpanBuilderShim : ISpanBuilder
     /// <inheritdoc/>
     public ISpan Start()
     {
-        TelemetrySpan span = null;
+        TelemetrySpan? span = null;
 
         // If specified, this takes precedence.
         if (this.ignoreActiveSpan)
         {
-            span = this.tracer.StartRootSpan(this.spanName, this.spanKind, default, this.links, this.explicitStartTime ?? default);
+            span = this.tracer.StartRootSpan(this.spanName, this.spanKind, this.attributes, this.links, this.explicitStartTime ?? default);
         }
         else if (this.parentSpan != null)
         {
-            span = this.tracer.StartSpan(this.spanName, this.spanKind, this.parentSpan, default, this.links, this.explicitStartTime ?? default);
+            span = this.tracer.StartSpan(this.spanName, this.spanKind, this.parentSpan, this.attributes, this.links, this.explicitStartTime ?? default);
         }
         else if (this.parentSpanContext.IsValid)
         {
-            span = this.tracer.StartSpan(this.spanName, this.spanKind, this.parentSpanContext, default, this.links, this.explicitStartTime ?? default);
+            span = this.tracer.StartSpan(this.spanName, this.spanKind, this.parentSpanContext, this.attributes, this.links, this.explicitStartTime ?? default);
         }
 
         if (span == null)
         {
-            span = this.tracer.StartSpan(this.spanName, this.spanKind, default(SpanContext), default, null, this.explicitStartTime ?? default);
-        }
-
-        foreach (var kvp in this.attributes)
-        {
-            span.SetAttribute(kvp.Key, kvp.Value.ToString());
+            span = this.tracer.StartSpan(this.spanName, this.spanKind, default(SpanContext), this.attributes, null, this.explicitStartTime ?? default);
         }
 
         if (this.error)
@@ -197,8 +179,13 @@ internal sealed class SpanBuilderShim : ISpanBuilder
     }
 
     /// <inheritdoc/>
-    public ISpanBuilder WithTag(string key, string value)
+    public ISpanBuilder WithTag(string key, string? value)
     {
+        if (key == null)
+        {
+            return this;
+        }
+
         // see https://opentracing.io/specification/conventions/ for special key handling.
         if (global::OpenTracing.Tag.Tags.SpanKind.Key.Equals(key, StringComparison.Ordinal))
         {
@@ -217,12 +204,7 @@ internal sealed class SpanBuilderShim : ISpanBuilder
         }
         else
         {
-            // Keys must be non-null.
-            // Null values => string.Empty.
-            if (key != null)
-            {
-                this.attributes.Add(new KeyValuePair<string, object>(key, value ?? string.Empty));
-            }
+            this.attributes.Add(key, value);
         }
 
         return this;
@@ -237,7 +219,7 @@ internal sealed class SpanBuilderShim : ISpanBuilder
         }
         else
         {
-            this.attributes.Add(new KeyValuePair<string, object>(key, value));
+            this.attributes.Add(key, value);
         }
 
         return this;
@@ -246,31 +228,31 @@ internal sealed class SpanBuilderShim : ISpanBuilder
     /// <inheritdoc/>
     public ISpanBuilder WithTag(string key, int value)
     {
-        this.attributes.Add(new KeyValuePair<string, object>(key, value));
+        this.attributes.Add(key, value);
         return this;
     }
 
     /// <inheritdoc/>
     public ISpanBuilder WithTag(string key, double value)
     {
-        this.attributes.Add(new KeyValuePair<string, object>(key, value));
+        this.attributes.Add(key, value);
         return this;
     }
 
     /// <inheritdoc/>
     public ISpanBuilder WithTag(global::OpenTracing.Tag.BooleanTag tag, bool value)
     {
-        Guard.ThrowIfNull(tag?.Key);
+        Guard.ThrowIfNull(tag);
 
         return this.WithTag(tag.Key, value);
     }
 
     /// <inheritdoc/>
-    public ISpanBuilder WithTag(global::OpenTracing.Tag.IntOrStringTag tag, string value)
+    public ISpanBuilder WithTag(global::OpenTracing.Tag.IntOrStringTag tag, string? value)
     {
-        Guard.ThrowIfNull(tag?.Key);
+        Guard.ThrowIfNull(tag);
 
-        if (int.TryParse(value, out var result))
+        if (value != null && int.TryParse(value, out var result))
         {
             return this.WithTag(tag.Key, result);
         }
@@ -281,15 +263,15 @@ internal sealed class SpanBuilderShim : ISpanBuilder
     /// <inheritdoc/>
     public ISpanBuilder WithTag(global::OpenTracing.Tag.IntTag tag, int value)
     {
-        Guard.ThrowIfNull(tag?.Key);
+        Guard.ThrowIfNull(tag);
 
         return this.WithTag(tag.Key, value);
     }
 
     /// <inheritdoc/>
-    public ISpanBuilder WithTag(global::OpenTracing.Tag.StringTag tag, string value)
+    public ISpanBuilder WithTag(global::OpenTracing.Tag.StringTag tag, string? value)
     {
-        Guard.ThrowIfNull(tag?.Key);
+        Guard.ThrowIfNull(tag);
 
         return this.WithTag(tag.Key, value);
     }

@@ -1,19 +1,7 @@
-// <copyright file="PrometheusCollectionManager.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using OpenTelemetry.Metrics;
 
@@ -25,16 +13,21 @@ internal sealed class PrometheusCollectionManager
 
     private readonly PrometheusExporter exporter;
     private readonly int scrapeResponseCacheDurationMilliseconds;
-    private readonly Func<Batch<Metric>, ExportResult> onCollectRef;
+    private readonly PrometheusExporter.ExportFunc onCollectRef;
     private readonly Dictionary<Metric, PrometheusMetric> metricsCache;
+    private readonly HashSet<string> scopes;
     private int metricsCacheCount;
-    private byte[] buffer = new byte[85000]; // encourage the object to live in LOH (large object heap)
+    private byte[] plainTextBuffer = new byte[85000]; // encourage the object to live in LOH (large object heap)
+    private byte[] openMetricsBuffer = new byte[85000]; // encourage the object to live in LOH (large object heap)
+    private int targetInfoBufferLength = -1; // zero or positive when target_info has been written for the first time
+    private ArraySegment<byte> previousPlainTextDataView;
+    private ArraySegment<byte> previousOpenMetricsDataView;
     private int globalLockState;
-    private ArraySegment<byte> previousDataView;
-    private DateTime? previousDataViewGeneratedAtUtc;
+    private DateTime? previousPlainTextDataViewGeneratedAtUtc;
+    private DateTime? previousOpenMetricsDataViewGeneratedAtUtc;
     private int readerCount;
     private bool collectionRunning;
-    private TaskCompletionSource<CollectionResponse> collectionTcs;
+    private TaskCompletionSource<CollectionResponse>? collectionTcs;
 
     public PrometheusCollectionManager(PrometheusExporter exporter)
     {
@@ -42,28 +35,33 @@ internal sealed class PrometheusCollectionManager
         this.scrapeResponseCacheDurationMilliseconds = this.exporter.ScrapeResponseCacheDurationMilliseconds;
         this.onCollectRef = this.OnCollect;
         this.metricsCache = new Dictionary<Metric, PrometheusMetric>();
+        this.scopes = new HashSet<string>();
     }
 
-#if NET6_0_OR_GREATER
-    public ValueTask<CollectionResponse> EnterCollect()
+#if NET
+    public ValueTask<CollectionResponse> EnterCollect(bool openMetricsRequested)
 #else
-    public Task<CollectionResponse> EnterCollect()
+    public Task<CollectionResponse> EnterCollect(bool openMetricsRequested)
 #endif
     {
         this.EnterGlobalLock();
 
         // If we are within {ScrapeResponseCacheDurationMilliseconds} of the
         // last successful collect, return the previous view.
-        if (this.previousDataViewGeneratedAtUtc.HasValue
+        var previousDataViewGeneratedAtUtc = openMetricsRequested
+            ? this.previousOpenMetricsDataViewGeneratedAtUtc
+            : this.previousPlainTextDataViewGeneratedAtUtc;
+
+        if (previousDataViewGeneratedAtUtc.HasValue
             && this.scrapeResponseCacheDurationMilliseconds > 0
-            && this.previousDataViewGeneratedAtUtc.Value.AddMilliseconds(this.scrapeResponseCacheDurationMilliseconds) >= DateTime.UtcNow)
+            && previousDataViewGeneratedAtUtc.Value.AddMilliseconds(this.scrapeResponseCacheDurationMilliseconds) >= DateTime.UtcNow)
         {
             Interlocked.Increment(ref this.readerCount);
             this.ExitGlobalLock();
-#if NET6_0_OR_GREATER
-            return new ValueTask<CollectionResponse>(new CollectionResponse(this.previousDataView, this.previousDataViewGeneratedAtUtc.Value, fromCache: true));
+#if NET
+            return new ValueTask<CollectionResponse>(new CollectionResponse(this.previousOpenMetricsDataView, this.previousPlainTextDataView, previousDataViewGeneratedAtUtc.Value, fromCache: true));
 #else
-            return Task.FromResult(new CollectionResponse(this.previousDataView, this.previousDataViewGeneratedAtUtc.Value, fromCache: true));
+            return Task.FromResult(new CollectionResponse(this.previousOpenMetricsDataView, this.previousPlainTextDataView, previousDataViewGeneratedAtUtc.Value, fromCache: true));
 #endif
         }
 
@@ -77,7 +75,7 @@ internal sealed class PrometheusCollectionManager
 
             Interlocked.Increment(ref this.readerCount);
             this.ExitGlobalLock();
-#if NET6_0_OR_GREATER
+#if NET
             return new ValueTask<CollectionResponse>(this.collectionTcs.Task);
 #else
             return this.collectionTcs.Task;
@@ -88,16 +86,37 @@ internal sealed class PrometheusCollectionManager
 
         // Start a collection on the current thread.
         this.collectionRunning = true;
-        this.previousDataViewGeneratedAtUtc = null;
+
+        if (openMetricsRequested)
+        {
+            this.previousOpenMetricsDataViewGeneratedAtUtc = null;
+        }
+        else
+        {
+            this.previousPlainTextDataViewGeneratedAtUtc = null;
+        }
+
         Interlocked.Increment(ref this.readerCount);
         this.ExitGlobalLock();
 
         CollectionResponse response;
-        var result = this.ExecuteCollect();
+        var result = this.ExecuteCollect(openMetricsRequested);
         if (result)
         {
-            this.previousDataViewGeneratedAtUtc = DateTime.UtcNow;
-            response = new CollectionResponse(this.previousDataView, this.previousDataViewGeneratedAtUtc.Value, fromCache: false);
+            if (openMetricsRequested)
+            {
+                this.previousOpenMetricsDataViewGeneratedAtUtc = DateTime.UtcNow;
+            }
+            else
+            {
+                this.previousPlainTextDataViewGeneratedAtUtc = DateTime.UtcNow;
+            }
+
+            previousDataViewGeneratedAtUtc = openMetricsRequested
+                ? this.previousOpenMetricsDataViewGeneratedAtUtc
+                : this.previousPlainTextDataViewGeneratedAtUtc;
+
+            response = new CollectionResponse(this.previousOpenMetricsDataView, this.previousPlainTextDataView, previousDataViewGeneratedAtUtc!.Value, fromCache: false);
         }
         else
         {
@@ -116,7 +135,7 @@ internal sealed class PrometheusCollectionManager
 
         this.ExitGlobalLock();
 
-#if NET6_0_OR_GREATER
+#if NET
         return new ValueTask<CollectionResponse>(response);
 #else
         return Task.FromResult(response);
@@ -168,20 +187,65 @@ internal sealed class PrometheusCollectionManager
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private bool ExecuteCollect()
+    private bool ExecuteCollect(bool openMetricsRequested)
     {
+        Debug.Assert(this.exporter.Collect != null, "this.exporter.Collect was null");
+
         this.exporter.OnExport = this.onCollectRef;
-        var result = this.exporter.Collect(Timeout.Infinite);
+        this.exporter.OpenMetricsRequested = openMetricsRequested;
+        var result = this.exporter.Collect!(Timeout.Infinite);
         this.exporter.OnExport = null;
         return result;
     }
 
-    private ExportResult OnCollect(Batch<Metric> metrics)
+    private ExportResult OnCollect(in Batch<Metric> metrics)
     {
         var cursor = 0;
+        ref byte[] buffer = ref (this.exporter.OpenMetricsRequested ? ref this.openMetricsBuffer : ref this.plainTextBuffer);
 
         try
         {
+            if (this.exporter.OpenMetricsRequested)
+            {
+                cursor = this.WriteTargetInfo(ref buffer);
+
+                this.scopes.Clear();
+
+                foreach (var metric in metrics)
+                {
+                    if (!PrometheusSerializer.CanWriteMetric(metric))
+                    {
+                        continue;
+                    }
+
+                    if (this.scopes.Add(metric.MeterName))
+                    {
+                        while (true)
+                        {
+                            try
+                            {
+                                cursor = PrometheusSerializer.WriteScopeInfo(buffer, cursor, metric.MeterName);
+
+                                break;
+                            }
+                            catch (IndexOutOfRangeException)
+                            {
+                                if (!this.IncreaseBufferSize(ref buffer))
+                                {
+                                    // there are two cases we might run into the following condition:
+                                    // 1. we have many metrics to be exported - in this case we probably want
+                                    //    to put some upper limit and allow the user to configure it.
+                                    // 2. we got an IndexOutOfRangeException which was triggered by some other
+                                    //    code instead of the buffer[cursor++] - in this case we should give up
+                                    //    at certain point rather than allocating like crazy.
+                                    throw;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             foreach (var metric in metrics)
             {
                 if (!PrometheusSerializer.CanWriteMetric(metric))
@@ -193,19 +257,19 @@ internal sealed class PrometheusCollectionManager
                 {
                     try
                     {
-                        cursor = PrometheusSerializer.WriteMetric(this.buffer, cursor, metric, this.GetPrometheusMetric(metric));
+                        cursor = PrometheusSerializer.WriteMetric(
+                            buffer,
+                            cursor,
+                            metric,
+                            this.GetPrometheusMetric(metric),
+                            this.exporter.OpenMetricsRequested);
+
                         break;
                     }
                     catch (IndexOutOfRangeException)
                     {
-                        if (!this.IncreaseBufferSize())
+                        if (!this.IncreaseBufferSize(ref buffer))
                         {
-                            // there are two cases we might run into the following condition:
-                            // 1. we have many metrics to be exported - in this case we probably want
-                            //    to put some upper limit and allow the user to configure it.
-                            // 2. we got an IndexOutOfRangeException which was triggered by some other
-                            //    code instead of the buffer[cursor++] - in this case we should give up
-                            //    at certain point rather than allocating like crazy.
                             throw;
                         }
                     }
@@ -216,31 +280,72 @@ internal sealed class PrometheusCollectionManager
             {
                 try
                 {
-                    cursor = PrometheusSerializer.WriteEof(this.buffer, cursor);
+                    cursor = PrometheusSerializer.WriteEof(buffer, cursor);
                     break;
                 }
                 catch (IndexOutOfRangeException)
                 {
-                    if (!this.IncreaseBufferSize())
+                    if (!this.IncreaseBufferSize(ref buffer))
                     {
                         throw;
                     }
                 }
             }
 
-            this.previousDataView = new ArraySegment<byte>(this.buffer, 0, cursor);
+            if (this.exporter.OpenMetricsRequested)
+            {
+                this.previousOpenMetricsDataView = new ArraySegment<byte>(buffer, 0, cursor);
+            }
+            else
+            {
+                this.previousPlainTextDataView = new ArraySegment<byte>(buffer, 0, cursor);
+            }
+
             return ExportResult.Success;
         }
         catch (Exception)
         {
-            this.previousDataView = new ArraySegment<byte>(Array.Empty<byte>(), 0, 0);
+            if (this.exporter.OpenMetricsRequested)
+            {
+                this.previousOpenMetricsDataView = new ArraySegment<byte>(Array.Empty<byte>(), 0, 0);
+            }
+            else
+            {
+                this.previousPlainTextDataView = new ArraySegment<byte>(Array.Empty<byte>(), 0, 0);
+            }
+
             return ExportResult.Failure;
         }
     }
 
-    private bool IncreaseBufferSize()
+    private int WriteTargetInfo(ref byte[] buffer)
     {
-        var newBufferSize = this.buffer.Length * 2;
+        if (this.targetInfoBufferLength < 0)
+        {
+            while (true)
+            {
+                try
+                {
+                    this.targetInfoBufferLength = PrometheusSerializer.WriteTargetInfo(buffer, 0, this.exporter.Resource);
+
+                    break;
+                }
+                catch (IndexOutOfRangeException)
+                {
+                    if (!this.IncreaseBufferSize(ref buffer))
+                    {
+                        throw;
+                    }
+                }
+            }
+        }
+
+        return this.targetInfoBufferLength;
+    }
+
+    private bool IncreaseBufferSize(ref byte[] buffer)
+    {
+        var newBufferSize = buffer.Length * 2;
 
         if (newBufferSize > 100 * 1024 * 1024)
         {
@@ -248,8 +353,8 @@ internal sealed class PrometheusCollectionManager
         }
 
         var newBuffer = new byte[newBufferSize];
-        this.buffer.CopyTo(newBuffer, 0);
-        this.buffer = newBuffer;
+        buffer.CopyTo(newBuffer, 0);
+        buffer = newBuffer;
 
         return true;
     }
@@ -259,7 +364,7 @@ internal sealed class PrometheusCollectionManager
         // Optimize writing metrics with bounded cache that has pre-calculated Prometheus names.
         if (!this.metricsCache.TryGetValue(metric, out var prometheusMetric))
         {
-            prometheusMetric = PrometheusMetric.Create(metric);
+            prometheusMetric = PrometheusMetric.Create(metric, this.exporter.DisableTotalNameSuffixForCounters);
 
             // Add to the cache if there is space.
             if (this.metricsCacheCount < MaxCachedMetrics)
@@ -274,14 +379,17 @@ internal sealed class PrometheusCollectionManager
 
     public readonly struct CollectionResponse
     {
-        public CollectionResponse(ArraySegment<byte> view, DateTime generatedAtUtc, bool fromCache)
+        public CollectionResponse(ArraySegment<byte> openMetricsView, ArraySegment<byte> plainTextView, DateTime generatedAtUtc, bool fromCache)
         {
-            this.View = view;
+            this.OpenMetricsView = openMetricsView;
+            this.PlainTextView = plainTextView;
             this.GeneratedAtUtc = generatedAtUtc;
             this.FromCache = fromCache;
         }
 
-        public ArraySegment<byte> View { get; }
+        public ArraySegment<byte> OpenMetricsView { get; }
+
+        public ArraySegment<byte> PlainTextView { get; }
 
         public DateTime GeneratedAtUtc { get; }
 

@@ -1,18 +1,5 @@
-// <copyright file="BatchLogRecordExportProcessorTests.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
 #if !NETFRAMEWORK
 using Microsoft.Extensions.Logging;
@@ -36,7 +23,9 @@ public sealed class BatchLogRecordExportProcessorTests
 
         using var scope = scopeProvider.Push(exportedItems);
 
-        var logRecord = new LogRecord();
+        var pool = LogRecordSharedPool.Current;
+
+        var logRecord = pool.Rent();
 
         var state = new LogRecordTest.DisposingState("Hello world");
 
@@ -54,25 +43,29 @@ public sealed class BatchLogRecordExportProcessorTests
         Assert.NotNull(logRecord.AttributeStorage);
         Assert.NotNull(logRecord.ILoggerData.BufferedScopes);
 
-        KeyValuePair<string, object> actualState = logRecord.StateValues[0];
+        KeyValuePair<string, object?> actualState = logRecord.StateValues[0];
 
         Assert.Same("Value", actualState.Key);
         Assert.Same("Hello world", actualState.Value);
 
+        int scopeCount = 0;
         bool foundScope = false;
 
-        logRecord.ForEachScope<object>(
+        logRecord.ForEachScope<object?>(
             (s, o) =>
             {
                 foundScope = ReferenceEquals(s.Scope, exportedItems);
+                scopeCount++;
             },
             null);
 
+        Assert.Equal(1, scopeCount);
         Assert.True(foundScope);
 
         processor.Shutdown();
 
         Assert.Single(exportedItems);
+        Assert.Same(logRecord, exportedItems[0]);
     }
 
     [Fact]
@@ -87,13 +80,18 @@ public sealed class BatchLogRecordExportProcessorTests
         using var processor = new BatchLogRecordExportProcessor(
             new InMemoryExporter<LogRecord>(exportedItems));
 
-        var logRecord = new LogRecord();
+        var pool = LogRecordSharedPool.Current;
+
+        var logRecord = pool.Rent();
 
         var state = new LogRecordTest.DisposingState("Hello world");
         logRecord.State = state;
 
         processor.OnEnd(logRecord);
         processor.Shutdown();
+
+        Assert.Single(exportedItems);
+        Assert.Same(logRecord, exportedItems[0]);
 
         state.Dispose();
 
@@ -105,6 +103,42 @@ public sealed class BatchLogRecordExportProcessorTests
             {
             }
         });
+    }
+
+    [Fact]
+    public void CopyMadeWhenLogRecordIsFromThreadStaticPoolTest()
+    {
+        List<LogRecord> exportedItems = new();
+
+        using var processor = new BatchLogRecordExportProcessor(
+            new InMemoryExporter<LogRecord>(exportedItems));
+
+        var pool = LogRecordThreadStaticPool.Instance;
+
+        var logRecord = pool.Rent();
+
+        processor.OnEnd(logRecord);
+        processor.Shutdown();
+
+        Assert.Single(exportedItems);
+        Assert.NotSame(logRecord, exportedItems[0]);
+    }
+
+    [Fact]
+    public void LogRecordAddedToBatchIfNotFromAnyPoolTest()
+    {
+        List<LogRecord> exportedItems = new();
+
+        using var processor = new BatchLogRecordExportProcessor(
+            new InMemoryExporter<LogRecord>(exportedItems));
+
+        var logRecord = new LogRecord();
+
+        processor.OnEnd(logRecord);
+        processor.Shutdown();
+
+        Assert.Single(exportedItems);
+        Assert.Same(logRecord, exportedItems[0]);
     }
 }
 #endif

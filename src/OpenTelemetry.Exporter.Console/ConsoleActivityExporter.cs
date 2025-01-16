@@ -1,18 +1,5 @@
-// <copyright file="ConsoleActivityExporter.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
 using System.Diagnostics;
 using OpenTelemetry.Resources;
@@ -44,7 +31,6 @@ public class ConsoleActivityExporter : ConsoleExporter<Activity>
                 this.WriteLine($"Activity.ParentSpanId:       {activity.ParentSpanId}");
             }
 
-            this.WriteLine($"Activity.ActivitySourceName: {activity.Source.Name}");
             this.WriteLine($"Activity.DisplayName:        {activity.DisplayName}");
             this.WriteLine($"Activity.Kind:               {activity.Kind}");
             this.WriteLine($"Activity.StartTime:          {activity.StartTimeUtc:yyyy-MM-ddTHH:mm:ss.fffffffZ}");
@@ -69,9 +55,9 @@ public class ConsoleActivityExporter : ConsoleExporter<Activity>
                         continue;
                     }
 
-                    if (ConsoleTagTransformer.Instance.TryTransformTag(tag, out var result))
+                    if (this.TagWriter.TryTransformTag(tag, out var result))
                     {
-                        this.WriteLine($"    {result}");
+                        this.WriteLine($"    {result.Key}: {result.Value}");
                     }
                 }
             }
@@ -101,9 +87,9 @@ public class ConsoleActivityExporter : ConsoleExporter<Activity>
                     this.WriteLine($"    {activityEvent.Name} [{activityEvent.Timestamp}]");
                     foreach (ref readonly var attribute in activityEvent.EnumerateTagObjects())
                     {
-                        if (ConsoleTagTransformer.Instance.TryTransformTag(attribute, out var result))
+                        if (this.TagWriter.TryTransformTag(attribute, out var result))
                         {
-                            this.WriteLine($"        {result}");
+                            this.WriteLine($"        {result.Key}: {result.Value}");
                         }
                     }
                 }
@@ -117,10 +103,29 @@ public class ConsoleActivityExporter : ConsoleExporter<Activity>
                     this.WriteLine($"    {activityLink.Context.TraceId} {activityLink.Context.SpanId}");
                     foreach (ref readonly var attribute in activityLink.EnumerateTagObjects())
                     {
-                        if (ConsoleTagTransformer.Instance.TryTransformTag(attribute, out var result))
+                        if (this.TagWriter.TryTransformTag(attribute, out var result))
                         {
-                            this.WriteLine($"        {result}");
+                            this.WriteLine($"        {result.Key}: {result.Value}");
                         }
+                    }
+                }
+            }
+
+            this.WriteLine("Instrumentation scope (ActivitySource):");
+            this.WriteLine($"    Name: {activity.Source.Name}");
+            if (!string.IsNullOrEmpty(activity.Source.Version))
+            {
+                this.WriteLine($"    Version: {activity.Source.Version}");
+            }
+
+            if (activity.Source.Tags?.Any() == true)
+            {
+                this.WriteLine("    Tags:");
+                foreach (var activitySourceTag in activity.Source.Tags)
+                {
+                    if (this.TagWriter.TryTransformTag(activitySourceTag, out var result))
+                    {
+                        this.WriteLine($"        {result.Key}: {result.Value}");
                     }
                 }
             }
@@ -131,9 +136,9 @@ public class ConsoleActivityExporter : ConsoleExporter<Activity>
                 this.WriteLine("Resource associated with Activity:");
                 foreach (var resourceAttribute in resource.Attributes)
                 {
-                    if (ConsoleTagTransformer.Instance.TryTransformTag(resourceAttribute, out var result))
+                    if (this.TagWriter.TryTransformTag(resourceAttribute.Key, resourceAttribute.Value, out var result))
                     {
-                        this.WriteLine($"    {result}");
+                        this.WriteLine($"    {result.Key}: {result.Value}");
                     }
                 }
             }

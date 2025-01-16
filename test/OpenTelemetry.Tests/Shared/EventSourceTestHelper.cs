@@ -1,18 +1,5 @@
-// <copyright file="EventSourceTestHelper.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
 using System.Diagnostics.Tracing;
 using System.Globalization;
@@ -39,7 +26,7 @@ internal static class EventSourceTestHelper
             object[] eventArguments = GenerateEventArguments(eventMethod);
             eventMethod.Invoke(eventSource, eventArguments);
 
-            EventWrittenEventArgs actualEvent = listener.Messages.FirstOrDefault(x => x.EventName == eventMethod.Name);
+            EventWrittenEventArgs? actualEvent = listener.Messages.FirstOrDefault(x => x.EventName == eventMethod.Name);
 
             if (actualEvent == null)
             {
@@ -60,7 +47,7 @@ internal static class EventSourceTestHelper
         }
         catch (Exception e)
         {
-            var name = eventMethod.DeclaringType.Name + "." + eventMethod.Name;
+            var name = eventMethod.DeclaringType?.Name + "." + eventMethod.Name;
 
             throw new Exception("Method '" + name + "' is implemented incorrectly.", e);
         }
@@ -91,7 +78,7 @@ internal static class EventSourceTestHelper
 
         if (parameter.ParameterType.IsValueType)
         {
-            return Activator.CreateInstance(parameter.ParameterType);
+            return Activator.CreateInstance(parameter.ParameterType)!;
         }
 
         throw new NotSupportedException("Complex types are not supported");
@@ -112,13 +99,14 @@ internal static class EventSourceTestHelper
     private static void VerifyEventMessage(MethodInfo eventMethod, EventWrittenEventArgs actualEvent, object[] eventArguments)
     {
         string expectedMessage = eventArguments.Length == 0
-            ? GetEventAttribute(eventMethod).Message
-            : string.Format(CultureInfo.InvariantCulture, GetEventAttribute(eventMethod).Message, eventArguments);
-        string actualMessage = string.Format(CultureInfo.InvariantCulture, actualEvent.Message, actualEvent.Payload.ToArray());
+            ? GetEventAttribute(eventMethod).Message!
+            : string.Format(CultureInfo.InvariantCulture, GetEventAttribute(eventMethod).Message!, eventArguments)!;
+        string actualMessage = string.Format(CultureInfo.InvariantCulture, actualEvent.Message!, actualEvent.Payload!.ToArray());
         AssertEqual(nameof(VerifyEventMessage), expectedMessage, actualMessage);
     }
 
     private static void AssertEqual<T>(string methodName, T expected, T actual)
+        where T : notnull
     {
         if (!expected.Equals(actual))
         {

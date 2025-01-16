@@ -1,20 +1,5 @@
-// <copyright file="ActivityExtensions.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
-
-#nullable enable
+// SPDX-License-Identifier: Apache-2.0
 
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
@@ -34,17 +19,34 @@ public static class ActivityExtensions
 {
     /// <summary>
     /// Sets the status of activity execution.
-    /// Activity class in .NET does not support 'Status'.
-    /// This extension provides a workaround to store Status as special tags with key name of otel.status_code and otel.status_description.
-    /// Read more about SetStatus here https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/trace/api.md#set-status.
     /// </summary>
+    /// <remarks>
+    /// Note: This method is obsolete. Call the <see cref="Activity.SetStatus"/>
+    /// method instead. For more details see: <see
+    /// href="https://github.com/open-telemetry/opentelemetry-dotnet/tree/main/src/OpenTelemetry.Api#setting-status"
+    /// />.
+    /// </remarks>
     /// <param name="activity">Activity instance.</param>
     /// <param name="status">Activity execution status.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void SetStatus(this Activity activity, Status status)
+    [Obsolete("Call Activity.SetStatus instead this method will be removed in a future version.")]
+    public static void SetStatus(this Activity? activity, Status status)
     {
         if (activity != null)
         {
+            switch (status.StatusCode)
+            {
+                case StatusCode.Ok:
+                    activity.SetStatus(ActivityStatusCode.Ok);
+                    break;
+                case StatusCode.Unset:
+                    activity.SetStatus(ActivityStatusCode.Unset);
+                    break;
+                case StatusCode.Error:
+                    activity.SetStatus(ActivityStatusCode.Error, status.Description);
+                    break;
+            }
+
             activity.SetTag(SpanAttributeConstants.StatusCodeKey, StatusHelper.GetTagValueForStatusCode(status.StatusCode));
             activity.SetTag(SpanAttributeConstants.StatusDescriptionKey, status.Description);
         }
@@ -52,62 +54,74 @@ public static class ActivityExtensions
 
     /// <summary>
     /// Gets the status of activity execution.
-    /// Activity class in .NET does not support 'Status'.
-    /// This extension provides a workaround to retrieve Status from special tags with key name otel.status_code and otel.status_description.
     /// </summary>
+    /// <remarks>
+    /// Note: This method is obsolete. Use the <see cref="Activity.Status"/> and
+    /// <see cref="Activity.StatusDescription"/> properties instead. For more
+    /// details see: <see
+    /// href="https://github.com/open-telemetry/opentelemetry-dotnet/tree/main/src/OpenTelemetry.Api#setting-status"
+    /// />.
+    /// </remarks>
     /// <param name="activity">Activity instance.</param>
     /// <returns>Activity execution status.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static Status GetStatus(this Activity activity)
+    [Obsolete("Use Activity.Status and Activity.StatusDescription instead this method will be removed in a future version.")]
+    public static Status GetStatus(this Activity? activity)
     {
-        if (activity == null
-            || !activity.TryGetStatus(out var statusCode, out var statusDescription))
+        if (activity != null)
         {
-            return Status.Unset;
+            switch (activity.Status)
+            {
+                case ActivityStatusCode.Ok:
+                    return Status.Ok;
+                case ActivityStatusCode.Error:
+                    return new Status(StatusCode.Error, activity.StatusDescription);
+            }
+
+            if (activity.TryGetStatus(out var statusCode, out var statusDescription))
+            {
+                return new Status(statusCode, statusDescription);
+            }
         }
 
-        return new Status(statusCode, statusDescription);
+        return Status.Unset;
     }
 
     /// <summary>
-    /// Adds an activity event containing information from the specified exception.
+    /// Adds an <see cref="ActivityEvent"/>  containing information from the specified exception.
     /// </summary>
     /// <param name="activity">Activity instance.</param>
     /// <param name="ex">Exception to be recorded.</param>
+    /// <remarks>
+    /// <para>Note: This method is obsolete. Please use <see cref="Activity.AddException"/> instead.</para>
+    /// The exception is recorded as per <a href="https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/trace/exceptions.md">specification</a>.
+    /// "exception.stacktrace" is represented using the value of <a href="https://learn.microsoft.com/dotnet/api/system.exception.tostring">Exception.ToString</a>.
+    /// </remarks>
+    [Obsolete("Call Activity.AddException instead this method will be removed in a future version.")]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void RecordException(this Activity activity, Exception? ex)
+    public static void RecordException(this Activity? activity, Exception? ex)
         => RecordException(activity, ex, default);
 
     /// <summary>
-    /// Adds an activity event containing information from the specified exception and additional tags.
+    /// Adds an <see cref="ActivityEvent"/> containing information from the specified exception and additional tags.
     /// </summary>
     /// <param name="activity">Activity instance.</param>
     /// <param name="ex">Exception to be recorded.</param>
     /// <param name="tags">Additional tags to record on the event.</param>
+    /// <remarks>
+    /// <para>Note: This method is obsolete. Please use <see cref="Activity.AddException"/> instead.</para>
+    /// The exception is recorded as per <a href="https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/trace/exceptions.md">specification</a>.
+    /// "exception.stacktrace" is represented using the value of <a href="https://learn.microsoft.com/dotnet/api/system.exception.tostring">Exception.ToString</a>.
+    /// </remarks>
+    [Obsolete("Call Activity.AddException instead this method will be removed in a future version.")]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void RecordException(this Activity activity, Exception? ex, in TagList tags)
+    public static void RecordException(this Activity? activity, Exception? ex, in TagList tags)
     {
         if (ex == null || activity == null)
         {
             return;
         }
 
-        var tagsCollection = new ActivityTagsCollection
-        {
-            { SemanticConventions.AttributeExceptionType, ex.GetType().FullName },
-            { SemanticConventions.AttributeExceptionStacktrace, ex.ToInvariantString() },
-        };
-
-        if (!string.IsNullOrWhiteSpace(ex.Message))
-        {
-            tagsCollection.Add(SemanticConventions.AttributeExceptionMessage, ex.Message);
-        }
-
-        foreach (var tag in tags)
-        {
-            tagsCollection[tag.Key] = tag.Value;
-        }
-
-        activity.AddEvent(new ActivityEvent(SemanticConventions.AttributeExceptionEventName, default, tagsCollection));
+        activity.AddException(ex, in tags);
     }
 }

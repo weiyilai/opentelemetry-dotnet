@@ -1,18 +1,5 @@
-// <copyright file="W3CTraceContextTests.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
 using System.Diagnostics;
 using System.Text;
@@ -31,10 +18,9 @@ public class W3CTraceContextTests : IDisposable
 {
     /*
         To run the tests, invoke docker-compose.yml from the root of the repo:
-        opentelemetry>docker-compose --file=test/OpenTelemetry.Instrumentation.W3cTraceContext.Tests/docker-compose.yml --project-directory=. up --exit-code-from=tests --build
+        opentelemetry>docker compose --file=test/OpenTelemetry.Instrumentation.W3cTraceContext.Tests/docker-compose.yml --project-directory=. up --exit-code-from=tests --build
      */
-    private const string W3cTraceContextEnvVarName = "OTEL_W3CTRACECONTEXT";
-    private static readonly Version AspNetCoreHostingVersion = typeof(Microsoft.AspNetCore.Hosting.Builder.IApplicationBuilderFactory).Assembly.GetName().Version;
+    private const string W3CTraceContextEnvVarName = "OTEL_W3CTRACECONTEXT";
     private readonly HttpClient httpClient = new();
     private readonly ITestOutputHelper output;
 
@@ -44,37 +30,32 @@ public class W3CTraceContextTests : IDisposable
     }
 
     [Trait("CategoryName", "W3CTraceContextTests")]
-    [SkipUnlessEnvVarFoundTheory(W3cTraceContextEnvVarName)]
+    [SkipUnlessEnvVarFoundTheory(W3CTraceContextEnvVarName)]
     [InlineData("placeholder")]
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "xUnit1026:Theory methods should use all of their parameters", Justification = "Need to use SkipUnlessEnvVarFoundTheory")]
     public void W3CTraceContextTestSuiteAsync(string value)
     {
         // configure SDK
-        using var tracerprovider = Sdk.CreateTracerProviderBuilder()
+        using var tracerProvider = Sdk.CreateTracerProviderBuilder()
         .AddAspNetCoreInstrumentation()
         .Build();
 
         var builder = WebApplication.CreateBuilder();
         using var app = builder.Build();
 
-        // disabling due to failing dotnet-format
-        // TODO: investigate why dotnet-format fails.
-#pragma warning disable SA1008 // Opening parenthesis should be spaced correctly
-        app.MapPost("/", async([FromBody] Data[] data) =>
+        app.MapPost("/", async ([FromBody] Data[] data) =>
         {
             var result = string.Empty;
             if (data != null)
             {
                 foreach (var argument in data)
                 {
-                    using var request = new HttpRequestMessage(HttpMethod.Post, argument.Url)
-                    {
-                        Content = new StringContent(
-                            JsonSerializer.Serialize(argument.Arguments),
-                            Encoding.UTF8,
-                            "application/json"),
-                    };
-                    await this.httpClient.SendAsync(request).ConfigureAwait(false);
+                    using var request = new HttpRequestMessage(HttpMethod.Post, argument.Url);
+                    request.Content = new StringContent(
+                        JsonSerializer.Serialize(argument.Arguments),
+                        Encoding.UTF8,
+                        "application/json");
+                    await this.httpClient.SendAsync(request);
                 }
             }
             else
@@ -84,9 +65,8 @@ public class W3CTraceContextTests : IDisposable
 
             return result;
         });
-#pragma warning restore SA1008 // Opening parenthesis should be spaced correctly
 
-        app.RunAsync();
+        app.RunAsync("http://localhost:5000/");
 
         string result = RunCommand("python", "trace-context/test/test.py http://localhost:5000/");
 
@@ -96,19 +76,7 @@ public class W3CTraceContextTests : IDisposable
         this.output.WriteLine("result:" + result);
 
         // Assert on the last line
-
-        // TODO: Investigate failures on .NET6 vs .NET7. To see the details
-        // run the tests with console logger (done automatically by the CI
-        // jobs).
-
-        if (AspNetCoreHostingVersion.Major <= 6)
-        {
-            Assert.StartsWith("FAILED (failures=5)", lastLine);
-        }
-        else
-        {
-            Assert.StartsWith("FAILED (failures=2)", lastLine);
-        }
+        Assert.StartsWith("OK", lastLine);
     }
 
     public void Dispose()
@@ -154,9 +122,9 @@ public class W3CTraceContextTests : IDisposable
     public class Data
     {
         [JsonPropertyName("url")]
-        public string Url { get; set; }
+        public string? Url { get; set; }
 
         [JsonPropertyName("arguments")]
-        public Data[] Arguments { get; set; }
+        public Data[]? Arguments { get; set; }
     }
 }

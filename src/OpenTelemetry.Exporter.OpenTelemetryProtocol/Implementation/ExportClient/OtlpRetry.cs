@@ -1,25 +1,9 @@
-// <copyright file="OtlpRetry.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
-using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
-using Google.Rpc;
-using Grpc.Core;
-using Status = Google.Rpc.Status;
+using OpenTelemetry.Exporter.OpenTelemetryProtocol.Implementation.ExportClient.Grpc;
 
 namespace OpenTelemetry.Exporter.OpenTelemetryProtocol.Implementation.ExportClient;
 
@@ -61,18 +45,86 @@ internal static class OtlpRetry
     private const int MaxBackoffMilliseconds = 5000;
     private const double BackoffMultiplier = 1.5;
 
-#if !NET6_0_OR_GREATER
+#if !NET
     private static readonly Random Random = new Random();
 #endif
 
-    public static bool TryGetHttpRetryResult(HttpStatusCode statusCode, DateTime? deadline, HttpResponseHeaders responseHeaders, int retryDelayMilliseconds, out RetryResult retryResult)
+    public static bool TryGetHttpRetryResult(ExportClientHttpResponse response, int retryDelayInMilliSeconds, out RetryResult retryResult)
     {
-        return OtlpRetry.TryGetRetryResult(statusCode, IsHttpStatusCodeRetryable, deadline, responseHeaders, TryGetHttpRetryDelay, retryDelayMilliseconds, out retryResult);
+        if (response.StatusCode.HasValue)
+        {
+            return TryGetRetryResult(response.StatusCode.Value, IsHttpStatusCodeRetryable, response.DeadlineUtc, response.Headers, TryGetHttpRetryDelay, retryDelayInMilliSeconds, out retryResult);
+        }
+        else
+        {
+            if (ShouldHandleHttpRequestException(response.Exception))
+            {
+                var delay = TimeSpan.FromMilliseconds(GetRandomNumber(0, retryDelayInMilliSeconds));
+                if (!IsDeadlineExceeded(response.DeadlineUtc + delay))
+                {
+                    retryResult = new RetryResult(false, delay, CalculateNextRetryDelay(retryDelayInMilliSeconds));
+                    return true;
+                }
+            }
+
+            retryResult = default;
+            return false;
+        }
     }
 
-    public static bool TryGetGrpcRetryResult(StatusCode statusCode, DateTime? deadline, Metadata trailers, int retryDelayMilliseconds, out RetryResult retryResult)
+    public static bool ShouldHandleHttpRequestException(Exception? exception)
     {
-        return OtlpRetry.TryGetRetryResult(statusCode, IsGrpcStatusCodeRetryable, deadline, trailers, TryGetGrpcRetryDelay, retryDelayMilliseconds, out retryResult);
+        // TODO: Handle specific exceptions.
+        return true;
+    }
+
+    public static bool TryGetGrpcRetryResult(ExportClientGrpcResponse response, int retryDelayMilliseconds, out RetryResult retryResult)
+    {
+        retryResult = default;
+
+        if (response.Status != null)
+        {
+            var nextRetryDelayMilliseconds = retryDelayMilliseconds;
+
+            if (IsDeadlineExceeded(response.DeadlineUtc))
+            {
+                return false;
+            }
+
+            var throttleDelay = GrpcStatusDeserializer.TryGetGrpcRetryDelay(response.GrpcStatusDetailsHeader);
+            var retryable = IsGrpcStatusCodeRetryable(response.Status.Value.StatusCode, throttleDelay.HasValue);
+
+            if (!retryable)
+            {
+                return false;
+            }
+
+            var delayDuration = throttleDelay ?? TimeSpan.FromMilliseconds(GetRandomNumber(0, nextRetryDelayMilliseconds));
+
+            if (IsDeadlineExceeded(response.DeadlineUtc + delayDuration))
+            {
+                return false;
+            }
+
+            if (throttleDelay.HasValue)
+            {
+                try
+                {
+                    // TODO: Consider making nextRetryDelayMilliseconds a double to avoid the need for convert/overflow handling
+                    nextRetryDelayMilliseconds = Convert.ToInt32(throttleDelay.Value.TotalMilliseconds);
+                }
+                catch (OverflowException)
+                {
+                    nextRetryDelayMilliseconds = MaxBackoffMilliseconds;
+                }
+            }
+
+            nextRetryDelayMilliseconds = CalculateNextRetryDelay(nextRetryDelayMilliseconds);
+            retryResult = new RetryResult(throttleDelay.HasValue, delayDuration, nextRetryDelayMilliseconds);
+            return true;
+        }
+
+        return false;
     }
 
     private static bool TryGetRetryResult<TStatusCode, TCarrier>(TStatusCode statusCode, Func<TStatusCode, bool, bool> isRetryable, DateTime? deadline, TCarrier carrier, Func<TStatusCode, TCarrier, TimeSpan?> throttleGetter, int nextRetryDelayMilliseconds, out RetryResult retryResult)
@@ -144,42 +196,14 @@ internal static class OtlpRetry
         return Convert.ToInt32(nextMilliseconds);
     }
 
-    private static TimeSpan? TryGetGrpcRetryDelay(StatusCode statusCode, Metadata trailers)
+    private static TimeSpan? TryGetHttpRetryDelay(HttpStatusCode statusCode, HttpResponseHeaders? responseHeaders)
     {
-        Debug.Assert(trailers != null, "trailers was null");
-
-        if (statusCode != StatusCode.ResourceExhausted && statusCode != StatusCode.Unavailable)
-        {
-            return null;
-        }
-
-        var statusDetails = trailers.Get(GrpcStatusDetailsHeader);
-        if (statusDetails != null && statusDetails.IsBinary)
-        {
-            var status = Status.Parser.ParseFrom(statusDetails.ValueBytes);
-            foreach (var item in status.Details)
-            {
-                var success = item.TryUnpack<RetryInfo>(out var retryInfo);
-                if (success)
-                {
-                    return retryInfo.RetryDelay.ToTimeSpan();
-                }
-            }
-        }
-
-        return null;
-    }
-
-    private static TimeSpan? TryGetHttpRetryDelay(HttpStatusCode statusCode, HttpResponseHeaders headers)
-    {
-        Debug.Assert(headers != null, "headers was null");
-
-#if NETSTANDARD2_1_OR_GREATER || NET6_0_OR_GREATER
+#if NETSTANDARD2_1_OR_GREATER || NET
         return statusCode == HttpStatusCode.TooManyRequests || statusCode == HttpStatusCode.ServiceUnavailable
 #else
         return statusCode == (HttpStatusCode)429 || statusCode == HttpStatusCode.ServiceUnavailable
 #endif
-            ? headers.RetryAfter?.Delta
+            ? responseHeaders?.RetryAfter?.Delta
             : null;
     }
 
@@ -201,13 +225,11 @@ internal static class OtlpRetry
         }
     }
 
-#pragma warning disable SA1313 // Parameter should begin with lower-case letter
-    private static bool IsHttpStatusCodeRetryable(HttpStatusCode statusCode, bool _)
-#pragma warning restore SA1313 // Parameter should begin with lower-case letter
+    private static bool IsHttpStatusCodeRetryable(HttpStatusCode statusCode, bool hasRetryDelay)
     {
         switch (statusCode)
         {
-#if NETSTANDARD2_1_OR_GREATER || NET6_0_OR_GREATER
+#if NETSTANDARD2_1_OR_GREATER || NET
             case HttpStatusCode.TooManyRequests:
 #else
             case (HttpStatusCode)429:
@@ -223,7 +245,7 @@ internal static class OtlpRetry
 
     private static int GetRandomNumber(int min, int max)
     {
-#if NET6_0_OR_GREATER
+#if NET
         return Random.Shared.Next(min, max);
 #else
         // TODO: Implement this better to minimize lock contention.

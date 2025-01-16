@@ -1,21 +1,8 @@
-// <copyright file="LoggerProviderSdk.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
 using System.Diagnostics;
-#if NETSTANDARD2_1_OR_GREATER || NET6_0_OR_GREATER
+#if NETSTANDARD2_1_OR_GREATER || NET
 using System.Diagnostics.CodeAnalysis;
 #endif
 using System.Text;
@@ -67,7 +54,8 @@ internal sealed class LoggerProviderSdk : LoggerProvider
         resourceBuilder.ServiceProvider = serviceProvider;
         this.Resource = resourceBuilder.Build();
 
-        foreach (var processor in state.Processors)
+        // Note: Linq OrderBy performs a stable sort, which is a requirement here
+        foreach (var processor in state.Processors.OrderBy(p => p.PipelineWeight))
         {
             this.AddProcessor(processor);
         }
@@ -206,9 +194,14 @@ internal sealed class LoggerProviderSdk : LoggerProvider
     }
 
     /// <inheritdoc />
-    protected override bool TryCreateLogger(
+#if EXPOSE_EXPERIMENTAL_FEATURES
+    protected
+#else
+    internal
+#endif
+        override bool TryCreateLogger(
         string? name,
-#if NETSTANDARD2_1_OR_GREATER || NET6_0_OR_GREATER
+#if NETSTANDARD2_1_OR_GREATER || NET
         [NotNullWhen(true)]
 #endif
         out Logger? logger)

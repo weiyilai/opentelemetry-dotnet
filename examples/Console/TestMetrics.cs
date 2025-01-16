@@ -1,18 +1,5 @@
-// <copyright file="TestMetrics.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
@@ -25,15 +12,22 @@ namespace Examples.Console;
 
 internal class TestMetrics
 {
-    internal static object Run(MetricsOptions options)
+    internal static int Run(MetricsOptions options)
     {
-        using var meter = new Meter("TestMeter");
+        var meterVersion = "1.0";
+        var meterTags = new List<KeyValuePair<string, object?>>
+        {
+            new(
+                "MeterTagKey",
+                "MeterTagValue"),
+        };
+        using var meter = new Meter("TestMeter", meterVersion, meterTags);
 
         var providerBuilder = Sdk.CreateMeterProviderBuilder()
             .ConfigureResource(r => r.AddService("myservice"))
             .AddMeter(meter.Name); // All instruments from this meter are enabled.
 
-        if (options.UseExporter.Equals("otlp", StringComparison.OrdinalIgnoreCase))
+        if ("otlp".Equals(options.UseExporter, StringComparison.OrdinalIgnoreCase))
         {
             /*
              * Prerequisite to run this example:
@@ -85,13 +79,13 @@ internal class TestMetrics
 
         using var provider = providerBuilder.Build();
 
-        Counter<int> counter = null;
+        Counter<int>? counter = null;
         if (options.FlagCounter ?? true)
         {
             counter = meter.CreateCounter<int>("counter", "things", "A count of things");
         }
 
-        Histogram<int> histogram = null;
+        Histogram<int>? histogram = null;
         if (options.FlagHistogram ?? false)
         {
             histogram = meter.CreateHistogram<int>("histogram");
@@ -105,7 +99,7 @@ internal class TestMetrics
                 {
                     new Measurement<int>(
                         (int)Process.GetCurrentProcess().PrivateMemorySize64,
-                        new KeyValuePair<string, object>("tag1", "value1")),
+                        new KeyValuePair<string, object?>("tag1", "value1")),
                 };
             });
         }
@@ -117,45 +111,45 @@ internal class TestMetrics
 
             histogram?.Record(
                 100,
-                new KeyValuePair<string, object>("tag1", "value1"));
+                new KeyValuePair<string, object?>("tag1", "value1"));
 
             histogram?.Record(
                 200,
-                new KeyValuePair<string, object>("tag1", "value2"),
-                new KeyValuePair<string, object>("tag2", "value2"));
+                new KeyValuePair<string, object?>("tag1", "value2"),
+                new KeyValuePair<string, object?>("tag2", "value2"));
 
             histogram?.Record(
                 100,
-                new KeyValuePair<string, object>("tag1", "value1"));
+                new KeyValuePair<string, object?>("tag1", "value1"));
 
             histogram?.Record(
                 200,
-                new KeyValuePair<string, object>("tag2", "value2"),
-                new KeyValuePair<string, object>("tag1", "value2"));
+                new KeyValuePair<string, object?>("tag2", "value2"),
+                new KeyValuePair<string, object?>("tag1", "value2"));
 
             counter?.Add(10);
 
             counter?.Add(
                 100,
-                new KeyValuePair<string, object>("tag1", "value1"));
+                new KeyValuePair<string, object?>("tag1", "value1"));
 
             counter?.Add(
                 200,
-                new KeyValuePair<string, object>("tag1", "value2"),
-                new KeyValuePair<string, object>("tag2", "value2"));
+                new KeyValuePair<string, object?>("tag1", "value2"),
+                new KeyValuePair<string, object?>("tag2", "value2"));
 
             counter?.Add(
                 100,
-                new KeyValuePair<string, object>("tag1", "value1"));
+                new KeyValuePair<string, object?>("tag1", "value1"));
 
             counter?.Add(
                 200,
-                new KeyValuePair<string, object>("tag2", "value2"),
-                new KeyValuePair<string, object>("tag1", "value2"));
+                new KeyValuePair<string, object?>("tag2", "value2"),
+                new KeyValuePair<string, object?>("tag1", "value2"));
 
             Task.Delay(500).Wait();
         }
 
-        return null;
+        return 0;
     }
 }

@@ -1,21 +1,7 @@
-// <copyright file="PooledListTest.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
 using System.Collections;
-using System.Reflection;
 
 using Xunit;
 
@@ -57,17 +43,9 @@ public class PooledListTest
     [Fact]
     public void Verify_AllocatedSize()
     {
-        int GetLastAllocatedSize(PooledList<int> pooledList)
-        {
-            var value = typeof(PooledList<int>)
-                .GetField("lastAllocatedSize", BindingFlags.NonPublic | BindingFlags.Static)
-                .GetValue(pooledList);
-            return (int)value;
-        }
-
         var pooledList = PooledList<int>.Create();
 
-        var size = GetLastAllocatedSize(pooledList);
+        var size = PooledList<int>.LastAllocatedSize;
         Assert.Equal(64, size);
 
         // The Add() method has a condition to double the size of the buffer
@@ -78,7 +56,7 @@ public class PooledListTest
             PooledList<int>.Add(ref pooledList, i);
         }
 
-        size = GetLastAllocatedSize(pooledList);
+        size = PooledList<int>.LastAllocatedSize;
         Assert.Equal(128, size);
     }
 

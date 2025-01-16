@@ -1,18 +1,5 @@
-// <copyright file="RuntimeContext.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
@@ -69,7 +56,8 @@ public static class RuntimeContext
     public static RuntimeContextSlot<T> RegisterSlot<T>(string slotName)
     {
         Guard.ThrowIfNullOrEmpty(slotName);
-        RuntimeContextSlot<T> slot = null;
+
+        RuntimeContextSlot<T>? slot = null;
 
         lock (Slots)
         {
@@ -93,6 +81,10 @@ public static class RuntimeContext
                 slot = new RemotingRuntimeContextSlot<T>(slotName);
             }
 #endif
+            else
+            {
+                throw new NotSupportedException($"ContextSlotType '{ContextSlotType}' is not supported");
+            }
 
             Slots[slotName] = slot;
             return slot;
@@ -108,9 +100,10 @@ public static class RuntimeContext
     public static RuntimeContextSlot<T> GetSlot<T>(string slotName)
     {
         Guard.ThrowIfNullOrEmpty(slotName);
+
         var slot = GuardNotFound(slotName);
-        var contextSlot = Guard.ThrowIfNotOfType<RuntimeContextSlot<T>>(slot);
-        return contextSlot;
+
+        return Guard.ThrowIfNotOfType<RuntimeContextSlot<T>>(slot);
     }
 
     /*
@@ -156,7 +149,7 @@ public static class RuntimeContext
     /// <typeparam name="T">The type of the value.</typeparam>
     /// <returns>The value retrieved from the context slot.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static T GetValue<T>(string slotName)
+    public static T? GetValue<T>(string slotName)
     {
         return GetSlot<T>(slotName).Get();
     }
@@ -166,12 +159,13 @@ public static class RuntimeContext
     /// </summary>
     /// <param name="slotName">The name of the context slot.</param>
     /// <param name="value">The value to be set.</param>
-    public static void SetValue(string slotName, object value)
+    public static void SetValue(string slotName, object? value)
     {
         Guard.ThrowIfNullOrEmpty(slotName);
+
         var slot = GuardNotFound(slotName);
-        var runtimeContextSlotValueAccessor = Guard.ThrowIfNotOfType<IRuntimeContextSlotValueAccessor>(slot);
-        runtimeContextSlotValueAccessor.Value = value;
+
+        Guard.ThrowIfNotOfType<IRuntimeContextSlotValueAccessor>(slot).Value = value;
     }
 
     /// <summary>
@@ -179,12 +173,13 @@ public static class RuntimeContext
     /// </summary>
     /// <param name="slotName">The name of the context slot.</param>
     /// <returns>The value retrieved from the context slot.</returns>
-    public static object GetValue(string slotName)
+    public static object? GetValue(string slotName)
     {
         Guard.ThrowIfNullOrEmpty(slotName);
+
         var slot = GuardNotFound(slotName);
-        var runtimeContextSlotValueAccessor = Guard.ThrowIfNotOfType<IRuntimeContextSlotValueAccessor>(slot);
-        return runtimeContextSlotValueAccessor.Value;
+
+        return Guard.ThrowIfNotOfType<IRuntimeContextSlotValueAccessor>(slot).Value;
     }
 
     // For testing purpose

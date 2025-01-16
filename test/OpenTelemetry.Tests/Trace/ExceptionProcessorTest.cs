@@ -1,18 +1,5 @@
-// <copyright file="ExceptionProcessorTest.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
 using System.Diagnostics;
 using OpenTelemetry.Tests;
@@ -33,11 +20,11 @@ public class ExceptionProcessorTest
             .AddProcessor(new ExceptionProcessor())
             .Build();
 
-        Activity activity1 = null;
-        Activity activity2 = null;
-        Activity activity3 = null;
-        Activity activity4 = null;
-        Activity activity5 = null;
+        Activity? activity1 = null;
+        Activity? activity2 = null;
+        Activity? activity3 = null;
+        Activity? activity4 = null;
+        Activity? activity5 = null;
 
         try
         {
@@ -82,17 +69,27 @@ public class ExceptionProcessorTest
         }
         finally
         {
-            activity5.Dispose();
+            activity5?.Dispose();
         }
 
+        Assert.NotNull(activity1);
         Assert.Equal(StatusCode.Error, activity1.GetStatus().StatusCode);
         Assert.Null(GetTagValue(activity1, "otel.exception_pointers"));
+
+        Assert.NotNull(activity2);
         Assert.Equal(StatusCode.Error, activity2.GetStatus().StatusCode);
         Assert.Null(GetTagValue(activity2, "otel.exception_pointers"));
+
+        Assert.NotNull(activity3);
         Assert.Equal(StatusCode.Unset, activity3.GetStatus().StatusCode);
         Assert.Null(GetTagValue(activity3, "otel.exception_pointers"));
+
+        Assert.NotNull(activity4);
         Assert.Equal(StatusCode.Unset, activity4.GetStatus().StatusCode);
+
         Assert.Null(GetTagValue(activity4, "otel.exception_pointers"));
+
+        Assert.NotNull(activity5);
         Assert.Equal(StatusCode.Unset, activity5.GetStatus().StatusCode);
 #if !NETFRAMEWORK
         if (Environment.Is64BitProcess)
@@ -117,7 +114,7 @@ public class ExceptionProcessorTest
             .SetSampler(new AlwaysOnSampler())
             .Build();
 
-        Activity activity = null;
+        Activity? activity = null;
 
         try
         {
@@ -133,11 +130,11 @@ public class ExceptionProcessorTest
         Assert.Equal(StatusCode.Unset, activity.GetStatus().StatusCode);
     }
 
-    private static object GetTagValue(Activity activity, string tagName)
+    private static object? GetTagValue(Activity activity, string tagName)
     {
         Debug.Assert(activity != null, "Activity should not be null");
 
-        foreach (ref readonly var tag in activity.EnumerateTagObjects())
+        foreach (ref readonly var tag in activity!.EnumerateTagObjects())
         {
             if (tag.Key == tagName)
             {

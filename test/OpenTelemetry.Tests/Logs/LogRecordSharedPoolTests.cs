@@ -1,20 +1,5 @@
-// <copyright file="LogRecordSharedPoolTests.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
-
-#nullable enable
+// SPDX-License-Identifier: Apache-2.0
 
 using Xunit;
 
@@ -57,20 +42,23 @@ public sealed class LogRecordSharedPoolTests
 
         Assert.Equal(1, pool.Count);
 
-        // Note: This is ignored because logRecord manually created has PoolReferenceCount = int.MaxValue.
-        LogRecord manualRecord = new();
-        Assert.Equal(int.MaxValue, manualRecord.PoolReferenceCount);
-        pool.Return(manualRecord);
+        var logRecordWithReferencesAdded = pool.Rent();
 
-        Assert.Equal(1, pool.Count);
+        // Note: This record won't be returned to the pool because we add a reference to it.
+        logRecordWithReferencesAdded.AddReference();
+
+        Assert.Equal(2, logRecordWithReferencesAdded.PoolReferenceCount);
+        pool.Return(logRecordWithReferencesAdded);
+
+        Assert.Equal(0, pool.Count);
 
         pool.Return(logRecord2);
 
-        Assert.Equal(2, pool.Count);
+        Assert.Equal(1, pool.Count);
 
         logRecord1 = pool.Rent();
         Assert.NotNull(logRecord1);
-        Assert.Equal(1, pool.Count);
+        Assert.Equal(0, pool.Count);
 
         logRecord2 = pool.Rent();
         Assert.NotNull(logRecord2);
@@ -83,7 +71,7 @@ public sealed class LogRecordSharedPoolTests
 
         pool.Return(logRecord1);
         pool.Return(logRecord2);
-        pool.Return(logRecord3);
+        pool.Return(logRecord3); // <- Discarded due to pool size of 2
         pool.Return(logRecord4); // <- Discarded due to pool size of 2
 
         Assert.Equal(2, pool.Count);
@@ -176,7 +164,7 @@ public sealed class LogRecordSharedPoolTests
         {
             for (int i = 0; i < LogRecordSharedPool.DefaultMaxPoolSize; i++)
             {
-                pool.Return(new LogRecord { PoolReferenceCount = 1 });
+                pool.Return(new LogRecord { Source = LogRecord.LogRecordSource.FromSharedPool, PoolReferenceCount = 1 });
             }
         }
 
@@ -190,7 +178,7 @@ public sealed class LogRecordSharedPoolTests
             {
                 Random random = new Random();
 
-                await Task.Delay(random.Next(100, 150)).ConfigureAwait(false);
+                await Task.Delay(random.Next(100, 150));
 
                 for (int i = 0; i < 1000; i++)
                 {
@@ -201,12 +189,12 @@ public sealed class LogRecordSharedPoolTests
                     // This should no-op mostly.
                     pool.Return(logRecord);
 
-                    await Task.Delay(random.Next(0, 20)).ConfigureAwait(false);
+                    await Task.Delay(random.Next(0, 20));
                 }
             }));
         }
 
-        await Task.WhenAll(tasks).ConfigureAwait(false);
+        await Task.WhenAll(tasks);
 
         processor.ForceFlush();
 
@@ -248,7 +236,7 @@ public sealed class LogRecordSharedPoolTests
         {
             tasks.Add(Task.Run(async () =>
             {
-                await Task.Delay(2000).ConfigureAwait(false);
+                await Task.Delay(2000);
 
                 for (int i = 0; i < 100_000; i++)
                 {
@@ -259,7 +247,7 @@ public sealed class LogRecordSharedPoolTests
             }));
         }
 
-        await Task.WhenAll(tasks).ConfigureAwait(false);
+        await Task.WhenAll(tasks);
 
         Assert.True(pool.Count <= LogRecordSharedPool.DefaultMaxPoolSize);
     }

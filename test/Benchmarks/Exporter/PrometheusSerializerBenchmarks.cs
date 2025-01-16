@@ -1,18 +1,5 @@
-// <copyright file="PrometheusSerializerBenchmarks.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
 using System.Diagnostics.Metrics;
 using BenchmarkDotNet.Attributes;
@@ -27,8 +14,8 @@ public class PrometheusSerializerBenchmarks
 {
     private readonly List<Metric> metrics = new();
     private readonly byte[] buffer = new byte[85000];
-    private Meter meter;
-    private MeterProvider meterProvider;
+    private Meter? meter;
+    private MeterProvider? meterProvider;
     private Dictionary<Metric, PrometheusMetric> cache = new Dictionary<Metric, PrometheusMetric>();
 
     [Params(1, 1000, 10000)]
@@ -58,7 +45,7 @@ public class PrometheusSerializerBenchmarks
     public void GlobalCleanup()
     {
         this.meter?.Dispose();
-        this.meterProvider.Dispose();
+        this.meterProvider?.Dispose();
     }
 
     // TODO: this has a dependency on https://github.com/open-telemetry/opentelemetry-dotnet/issues/2361
@@ -79,7 +66,7 @@ public class PrometheusSerializerBenchmarks
     {
         if (!this.cache.TryGetValue(metric, out var prometheusMetric))
         {
-            prometheusMetric = PrometheusMetric.Create(metric);
+            prometheusMetric = PrometheusMetric.Create(metric, false);
             this.cache[metric] = prometheusMetric;
         }
 

@@ -1,27 +1,15 @@
-// <copyright file="PooledList.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
 using System.Buffers;
 using System.Collections;
+using System.Diagnostics.CodeAnalysis;
 
 namespace OpenTelemetry.Internal;
 
 internal readonly struct PooledList<T> : IEnumerable<T>, ICollection
 {
-    private static int lastAllocatedSize = 64;
+    public static int LastAllocatedSize = 64;
 
     private readonly T[] buffer;
 
@@ -46,7 +34,7 @@ internal readonly struct PooledList<T> : IEnumerable<T>, ICollection
 
     public static PooledList<T> Create()
     {
-        return new PooledList<T>(ArrayPool<T>.Shared.Rent(lastAllocatedSize), 0);
+        return new PooledList<T>(ArrayPool<T>.Shared.Rent(LastAllocatedSize), 0);
     }
 
     public static void Add(ref PooledList<T> list, T item)
@@ -57,10 +45,10 @@ internal readonly struct PooledList<T> : IEnumerable<T>, ICollection
 
         if (list.Count >= buffer.Length)
         {
-            lastAllocatedSize = buffer.Length * 2;
+            LastAllocatedSize = buffer.Length * 2;
             var previousBuffer = buffer;
 
-            buffer = ArrayPool<T>.Shared.Rent(lastAllocatedSize);
+            buffer = ArrayPool<T>.Shared.Rent(LastAllocatedSize);
 
             var span = previousBuffer.AsSpan();
             span.CopyTo(buffer);
@@ -110,6 +98,7 @@ internal readonly struct PooledList<T> : IEnumerable<T>, ICollection
         private readonly T[] buffer;
         private readonly int count;
         private int index;
+        [AllowNull]
         private T current;
 
         public Enumerator(in PooledList<T> list)
@@ -120,9 +109,9 @@ internal readonly struct PooledList<T> : IEnumerable<T>, ICollection
             this.current = default;
         }
 
-        public T Current { get => this.current; }
+        public T Current => this.current;
 
-        object IEnumerator.Current { get => this.Current; }
+        object? IEnumerator.Current => this.Current;
 
         public void Dispose()
         {

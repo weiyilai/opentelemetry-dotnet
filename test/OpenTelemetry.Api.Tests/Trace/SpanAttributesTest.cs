@@ -1,18 +1,5 @@
-// <copyright file="SpanAttributesTest.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
 using Xunit;
 
@@ -50,7 +37,7 @@ public class SpanAttributesTest
     public void ValidateNullKey()
     {
         var spanAttribute = new SpanAttributes();
-        Assert.Throws<ArgumentNullException>(() => spanAttribute.Add(null, "null key"));
+        Assert.Throws<ArgumentNullException>(() => spanAttribute.Add(null!, "null key"));
     }
 
     [Fact]
@@ -66,17 +53,17 @@ public class SpanAttributesTest
     public void ValidateConstructorWithList()
     {
         var spanAttributes = new SpanAttributes(
-           new List<KeyValuePair<string, object>>()
-           {
-                new KeyValuePair<string, object>("Span attribute int", 1),
-                new KeyValuePair<string, object>("Span attribute string", "str"),
-           });
+            new List<KeyValuePair<string, object?>>
+            {
+            new("Span attribute int", 1),
+            new("Span attribute string", "str"),
+            });
         Assert.Equal(2, spanAttributes.Attributes.Count);
     }
 
     [Fact]
     public void ValidateConstructorWithNullList()
     {
-        Assert.Throws<ArgumentNullException>(() => new SpanAttributes(null));
+        Assert.Throws<ArgumentNullException>(() => new SpanAttributes(null!));
     }
 }

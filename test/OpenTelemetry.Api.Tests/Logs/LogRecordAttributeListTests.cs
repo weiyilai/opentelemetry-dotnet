@@ -1,18 +1,5 @@
-// <copyright file="LogRecordAttributeListTests.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
 using Xunit;
 
@@ -42,13 +29,15 @@ public sealed class LogRecordAttributeListTests
             var item = attributes[i];
 
             Assert.Equal($"key{i}", item.Key);
+            Assert.NotNull(item.Value);
             Assert.Equal(i, (int)item.Value);
         }
 
         int index = 0;
-        foreach (KeyValuePair<string, object> item in attributes)
+        foreach (KeyValuePair<string, object?> item in attributes)
         {
             Assert.Equal($"key{index}", item.Key);
+            Assert.NotNull(item.Value);
             Assert.Equal(index, (int)item.Value);
             index++;
         }
@@ -87,6 +76,7 @@ public sealed class LogRecordAttributeListTests
                 var item = attributes[i];
 
                 Assert.Equal($"key{i}", item.Key);
+                Assert.NotNull(item.Value);
                 Assert.Equal(i, (int)item.Value);
             }
 
@@ -111,7 +101,7 @@ public sealed class LogRecordAttributeListTests
             attributes.Add($"key{i}", i);
         }
 
-        List<KeyValuePair<string, object>> storage = null;
+        List<KeyValuePair<string, object?>>? storage = null;
 
         var exportedAttributes = attributes.Export(ref storage);
 
@@ -135,9 +125,10 @@ public sealed class LogRecordAttributeListTests
         }
 
         int index = 0;
-        foreach (KeyValuePair<string, object> item in exportedAttributes)
+        foreach (KeyValuePair<string, object?> item in exportedAttributes)
         {
             Assert.Equal($"key{index}", item.Key);
+            Assert.NotNull(item.Value);
             Assert.Equal(index, (int)item.Value);
             index++;
         }

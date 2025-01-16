@@ -1,21 +1,10 @@
-// <copyright file="PrometheusExporter.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
+using System.Diagnostics;
 using OpenTelemetry.Internal;
 using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
 
 namespace OpenTelemetry.Exporter.Prometheus;
 
@@ -25,8 +14,9 @@ namespace OpenTelemetry.Exporter.Prometheus;
 [ExportModes(ExportModes.Pull)]
 internal sealed class PrometheusExporter : BaseExporter<Metric>, IPullMetricExporter
 {
-    private Func<int, bool> funcCollect;
-    private Func<Batch<Metric>, ExportResult> funcExport;
+    private Func<int, bool>? funcCollect;
+    private ExportFunc? funcExport;
+    private Resource? resource;
     private bool disposed;
 
     /// <summary>
@@ -38,35 +28,46 @@ internal sealed class PrometheusExporter : BaseExporter<Metric>, IPullMetricExpo
         Guard.ThrowIfNull(options);
 
         this.ScrapeResponseCacheDurationMilliseconds = options.ScrapeResponseCacheDurationMilliseconds;
+        this.DisableTotalNameSuffixForCounters = options.DisableTotalNameSuffixForCounters;
 
         this.CollectionManager = new PrometheusCollectionManager(this);
     }
 
+    public delegate ExportResult ExportFunc(in Batch<Metric> batch);
+
     /// <summary>
     /// Gets or sets the Collect delegate.
     /// </summary>
-    public Func<int, bool> Collect
+    public Func<int, bool>? Collect
     {
         get => this.funcCollect;
         set => this.funcCollect = value;
     }
 
-    internal Func<Batch<Metric>, ExportResult> OnExport
+    internal ExportFunc? OnExport
     {
         get => this.funcExport;
         set => this.funcExport = value;
     }
 
-    internal Action OnDispose { get; set; }
+    internal Action? OnDispose { get; set; }
 
     internal PrometheusCollectionManager CollectionManager { get; }
 
     internal int ScrapeResponseCacheDurationMilliseconds { get; }
 
+    internal bool DisableTotalNameSuffixForCounters { get; }
+
+    internal bool OpenMetricsRequested { get; set; }
+
+    internal Resource Resource => this.resource ??= this.ParentProvider.GetResource();
+
     /// <inheritdoc/>
     public override ExportResult Export(in Batch<Metric> metrics)
     {
-        return this.OnExport(metrics);
+        Debug.Assert(this.OnExport != null, "this.OnExport was null");
+
+        return this.OnExport!(in metrics);
     }
 
     /// <inheritdoc/>

@@ -1,21 +1,10 @@
-// <copyright file="Sdk.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
 using System.Diagnostics;
-using System.Reflection;
+#if EXPOSE_EXPERIMENTAL_FEATURES && NET
+using System.Diagnostics.CodeAnalysis;
+#endif
 using OpenTelemetry.Context.Propagation;
 using OpenTelemetry.Internal;
 using OpenTelemetry.Logs;
@@ -41,13 +30,8 @@ public static class Sdk
         Activity.ForceDefaultIdFormat = true;
         SelfDiagnostics.EnsureInitialized();
 
-        var assemblyInformationalVersion = typeof(Sdk).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
-        InformationalVersion = ParseAssemblyInformationalVersion(assemblyInformationalVersion);
-
-        ConfigurationExtensions.LogInvalidEnvironmentVariable = (string key, string value) =>
-        {
-            OpenTelemetrySdkEventSource.Log.InvalidEnvironmentVariable(key, value);
-        };
+        var sdkAssembly = typeof(Sdk).Assembly;
+        InformationalVersion = sdkAssembly.GetPackageVersion();
     }
 
     /// <summary>
@@ -105,6 +89,9 @@ public static class Sdk
     /// <remarks><b>WARNING</b>: This is an experimental API which might change or be removed in the future. Use at your own risk.</remarks>
     /// <returns><see cref="LoggerProviderBuilder"/> instance, which is used
     /// to build a <see cref="LoggerProvider"/>.</returns>
+#if NET
+    [Experimental(DiagnosticDefinitions.LogsBridgeExperimentalApi, UrlFormat = DiagnosticDefinitions.ExperimentalApiUrlFormat)]
+#endif
     public
 #else
     /// <summary>
@@ -118,28 +105,8 @@ public static class Sdk
     /// to build a <see cref="LoggerProvider"/>.</returns>
     internal
 #endif
-        static LoggerProviderBuilder CreateLoggerProviderBuilder()
+            static LoggerProviderBuilder CreateLoggerProviderBuilder()
     {
         return new LoggerProviderBuilderBase();
-    }
-
-    internal static string ParseAssemblyInformationalVersion(string? informationalVersion)
-    {
-        if (string.IsNullOrWhiteSpace(informationalVersion))
-        {
-            informationalVersion = "1.0.0";
-        }
-
-        /*
-         * InformationalVersion will be in the following format:
-         *   {majorVersion}.{minorVersion}.{patchVersion}.{pre-release label}.{pre-release version}.{gitHeight}+{Git SHA of current commit}
-         * Ex: 1.5.0-alpha.1.40+807f703e1b4d9874a92bd86d9f2d4ebe5b5d52e4
-         * The following parts are optional: pre-release label, pre-release version, git height, Git SHA of current commit
-         */
-
-        var indexOfPlusSign = informationalVersion!.IndexOf('+');
-        return indexOfPlusSign > 0
-            ? informationalVersion.Substring(0, indexOfPlusSign)
-            : informationalVersion;
     }
 }

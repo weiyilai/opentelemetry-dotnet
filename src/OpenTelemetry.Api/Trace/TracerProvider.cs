@@ -1,23 +1,8 @@
-// <copyright file="TracerProvider.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
-
-#nullable enable
+// SPDX-License-Identifier: Apache-2.0
 
 using System.Collections.Concurrent;
-#if NET6_0_OR_GREATER
+#if NET
 using System.Diagnostics.CodeAnalysis;
 #endif
 
@@ -28,7 +13,7 @@ namespace OpenTelemetry.Trace;
 /// </summary>
 public class TracerProvider : BaseProvider
 {
-    private ConcurrentDictionary<TracerKey, Tracer>? tracers = new();
+    internal ConcurrentDictionary<TracerKey, Tracer>? Tracers = new();
 
     /// <summary>
     /// Initializes a new instance of the <see cref="TracerProvider"/> class.
@@ -49,13 +34,13 @@ public class TracerProvider : BaseProvider
     /// <param name="version">Version of the instrumentation library.</param>
     /// <returns>Tracer instance.</returns>
     public Tracer GetTracer(
-#if NET6_0_OR_GREATER
+#if NET
         [AllowNull]
 #endif
         string name,
         string? version = null)
     {
-        var tracers = this.tracers;
+        var tracers = this.Tracers;
         if (tracers == null)
         {
             // Note: Returns a no-op Tracer once dispose has been called.
@@ -68,7 +53,7 @@ public class TracerProvider : BaseProvider
         {
             lock (tracers)
             {
-                if (this.tracers == null)
+                if (this.Tracers == null)
                 {
                     // Note: We check here for a race with Dispose and return a
                     // no-op Tracer in that case.
@@ -93,7 +78,7 @@ public class TracerProvider : BaseProvider
     {
         if (disposing)
         {
-            var tracers = Interlocked.CompareExchange(ref this.tracers, null, this.tracers);
+            var tracers = Interlocked.CompareExchange(ref this.Tracers, null, this.Tracers);
             if (tracers != null)
             {
                 lock (tracers)
@@ -114,7 +99,7 @@ public class TracerProvider : BaseProvider
         base.Dispose(disposing);
     }
 
-    private readonly record struct TracerKey
+    internal readonly record struct TracerKey
     {
         public readonly string Name;
         public readonly string? Version;

@@ -1,6 +1,93 @@
 # Changelog
 
+This file contains individual changes for the
+OpenTelemetry.Api.ProviderBuilderExtensions package. For highlights and
+announcements covering all components see: [Release
+Notes](../../RELEASENOTES.md).
+
 ## Unreleased
+
+## 1.11.0
+
+Released 2025-Jan-15
+
+## 1.11.0-rc.1
+
+Released 2024-Dec-11
+
+## 1.10.0
+
+Released 2024-Nov-12
+
+* Updated `Microsoft.Extensions.DependencyInjection.Abstractions` package
+  version to `9.0.0`.
+  ([#5967](https://github.com/open-telemetry/opentelemetry-dotnet/pull/5967))
+
+## 1.10.0-rc.1
+
+Released 2024-Nov-01
+
+## 1.10.0-beta.1
+
+Released 2024-Sep-30
+
+* Updated `Microsoft.Extensions.DependencyInjection.Abstractions` package
+  version to `9.0.0-rc.1.24431.7`.
+  ([#5853](https://github.com/open-telemetry/opentelemetry-dotnet/pull/5853))
+
+## 1.9.0
+
+Released 2024-Jun-14
+
+## 1.9.0-rc.1
+
+Released 2024-Jun-07
+
+* The experimental APIs previously covered by `OTEL1000`
+  (`LoggerProviderBuilder` `AddInstrumentation` & `ConfigureServices` extensions
+  and `IServiceCollection.ConfigureOpenTelemetryLoggerProvider` extension) are
+  now part of the public API and supported in stable builds.
+  ([#5648](https://github.com/open-telemetry/opentelemetry-dotnet/pull/5648))
+
+## 1.9.0-alpha.1
+
+Released 2024-May-20
+
+## 1.8.1
+
+Released 2024-Apr-17
+
+## 1.8.0
+
+Released 2024-Apr-02
+
+## 1.8.0-rc.1
+
+Released 2024-Mar-27
+
+## 1.8.0-beta.1
+
+Released 2024-Mar-14
+
+* Added `IOpenTelemetryBuilder` interface to support authoring extensions which
+  can configure multiple OpenTelemetry signals (tracing, metrics, and/or logs).
+  ([#5265](https://github.com/open-telemetry/opentelemetry-dotnet/pull/5265))
+
+## 1.7.0
+
+Released 2023-Dec-08
+
+## 1.7.0-rc.1
+
+Released 2023-Nov-29
+
+* Updated `Microsoft.Extensions.DependencyInjection.Abstractions` package
+  version to `8.0.0`.
+  ([#5051](https://github.com/open-telemetry/opentelemetry-dotnet/pull/5051))
+
+## 1.7.0-alpha.1
+
+Released 2023-Oct-16
 
 ## 1.6.0
 

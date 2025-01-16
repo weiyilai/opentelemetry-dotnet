@@ -1,18 +1,5 @@
-// <copyright file="InstrumentationWithActivitySource.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
 using System.Diagnostics;
 using System.Globalization;
@@ -60,13 +47,13 @@ internal class InstrumentationWithActivitySource : IDisposable
                         var context = this.listener.GetContext();
 
                         using var activity = source.StartActivity(
-                            $"{context.Request.HttpMethod}:{context.Request.Url.AbsolutePath}",
+                            $"{context.Request.HttpMethod}:{context.Request.Url!.AbsolutePath}",
                             ActivityKind.Server);
 
                         var headerKeys = context.Request.Headers.AllKeys;
                         foreach (var headerKey in headerKeys)
                         {
-                            string headerValue = context.Request.Headers[headerKey];
+                            string? headerValue = context.Request.Headers[headerKey];
                             activity?.SetTag($"http.header.{headerKey}", headerValue);
                         }
 
@@ -75,7 +62,7 @@ internal class InstrumentationWithActivitySource : IDisposable
                         using (var reader = new StreamReader(context.Request.InputStream, context.Request.ContentEncoding))
                         {
                             requestContent = reader.ReadToEnd();
-                            childSpan.AddEvent(new ActivityEvent("StreamReader.ReadToEnd"));
+                            childSpan?.AddEvent(new ActivityEvent("StreamReader.ReadToEnd"));
                         }
 
                         activity?.SetTag("request.content", requestContent);
@@ -103,8 +90,8 @@ internal class InstrumentationWithActivitySource : IDisposable
 
     private class SampleClient : IDisposable
     {
-        private CancellationTokenSource cts;
-        private Task requestTask;
+        private CancellationTokenSource? cts;
+        private Task? requestTask;
 
         public void Start(string url)
         {
@@ -167,7 +154,7 @@ internal class InstrumentationWithActivitySource : IDisposable
             if (this.cts != null)
             {
                 this.cts.Cancel();
-                this.requestTask.Wait();
+                this.requestTask!.Wait();
                 this.requestTask.Dispose();
                 this.cts.Dispose();
             }

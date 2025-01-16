@@ -1,45 +1,26 @@
-// <copyright file="Program.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
 using OpenTelemetry.Logs;
 using OpenTelemetry.Resources;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Remove default providers and add OpenTelemetry logging provider.
-// For instructional purposes only, disable the default .NET console logging provider to
-// use the verbose OpenTelemetry console exporter instead. For most development
-// and production scenarios the default console provider works well and there is no need to
+// For instructional purposes only, disable the default .NET logging providers.
+// We remove the console logging provider in this demo to use the verbose
+// OpenTelemetry console exporter instead. For most development and production
+// scenarios the default console provider works well and there is no need to
 // clear these providers.
 builder.Logging.ClearProviders();
 
-builder.Logging.AddOpenTelemetry(logging =>
-{
-    logging.IncludeScopes = true;
-
-    var resourceBuilder = ResourceBuilder
-        .CreateDefault()
-        .AddService(builder.Environment.ApplicationName);
-
-    logging.SetResourceBuilder(resourceBuilder)
-
-        // ConsoleExporter is used for demo purpose only.
-        // In production environment, ConsoleExporter should be replaced with other exporters (e.g. OTLP Exporter).
-        .AddConsoleExporter();
-});
+// Add OpenTelemetry logging provider by calling the WithLogging extension.
+builder.Services.AddOpenTelemetry()
+    .ConfigureResource(r => r.AddService(builder.Environment.ApplicationName))
+    .WithLogging(logging => logging
+        /* Note: ConsoleExporter is used for demo purpose only. In production
+           environment, ConsoleExporter should be replaced with other exporters
+           (e.g. OTLP Exporter). */
+        .AddConsoleExporter());
 
 var app = builder.Build();
 
@@ -54,7 +35,7 @@ app.Logger.StartingApp();
 
 app.Run();
 
-public static partial class ApplicationLogs
+internal static partial class LoggerExtensions
 {
     [LoggerMessage(LogLevel.Information, "Starting the app...")]
     public static partial void StartingApp(this ILogger logger);
