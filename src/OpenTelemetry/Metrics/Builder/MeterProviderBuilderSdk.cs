@@ -1,18 +1,5 @@
-// <copyright file="MeterProviderBuilderSdk.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
@@ -28,8 +15,8 @@ namespace OpenTelemetry.Metrics;
 /// </summary>
 internal sealed class MeterProviderBuilderSdk : MeterProviderBuilder, IMeterProviderBuilder
 {
-    public const int MaxMetricsDefault = 1000;
-    public const int MaxMetricPointsPerMetricDefault = 2000;
+    public const int DefaultMetricLimit = 1000;
+    public const int DefaultCardinalityLimit = 2000;
     private const string DefaultInstrumentationVersion = "1.0.0.0";
 
     private readonly IServiceProvider serviceProvider;
@@ -52,7 +39,7 @@ internal sealed class MeterProviderBuilderSdk : MeterProviderBuilder, IMeterProv
 
     public ResourceBuilder? ResourceBuilder { get; private set; }
 
-    public ExemplarFilter? ExemplarFilter { get; private set; }
+    public ExemplarFilterType? ExemplarFilter { get; private set; }
 
     public MeterProvider? Provider => this.meterProvider;
 
@@ -62,9 +49,9 @@ internal sealed class MeterProviderBuilderSdk : MeterProviderBuilder, IMeterProv
 
     public List<Func<Instrument, MetricStreamConfiguration?>> ViewConfigs { get; } = new();
 
-    public int MaxMetricStreams { get; private set; } = MaxMetricsDefault;
+    public int MetricLimit { get; private set; } = DefaultMetricLimit;
 
-    public int MaxMetricPointsPerMetricStream { get; private set; } = MaxMetricPointsPerMetricDefault;
+    public int CardinalityLimit { get; private set; } = DefaultCardinalityLimit;
 
     /// <summary>
     /// Returns whether the given instrument name is valid according to the specification.
@@ -158,10 +145,8 @@ internal sealed class MeterProviderBuilderSdk : MeterProviderBuilder, IMeterProv
         return this;
     }
 
-    public MeterProviderBuilder SetExemplarFilter(ExemplarFilter exemplarFilter)
+    public MeterProviderBuilder SetExemplarFilter(ExemplarFilterType exemplarFilter)
     {
-        Debug.Assert(exemplarFilter != null, "exemplarFilter was null");
-
         this.ExemplarFilter = exemplarFilter;
 
         return this;
@@ -199,16 +184,16 @@ internal sealed class MeterProviderBuilderSdk : MeterProviderBuilder, IMeterProv
         return this;
     }
 
-    public MeterProviderBuilder SetMaxMetricStreams(int maxMetricStreams)
+    public MeterProviderBuilder SetMetricLimit(int metricLimit)
     {
-        this.MaxMetricStreams = maxMetricStreams;
+        this.MetricLimit = metricLimit;
 
         return this;
     }
 
-    public MeterProviderBuilder SetMaxMetricPointsPerMetricStream(int maxMetricPointsPerMetricStream)
+    public MeterProviderBuilder SetDefaultCardinalityLimit(int cardinalityLimit)
     {
-        this.MaxMetricPointsPerMetricStream = maxMetricPointsPerMetricStream;
+        this.CardinalityLimit = cardinalityLimit;
 
         return this;
     }

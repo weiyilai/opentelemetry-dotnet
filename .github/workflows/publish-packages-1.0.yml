@@ -5,46 +5,139 @@
 ################### IMPORTANT ###################
 #################################################
 
-name: Pack and publish to MyGet
+name: Build, pack, and publish to MyGet
 
 on:
-  release:
-    types: [published]
+  workflow_dispatch:
+  push:
+    tags:
+      - 'core-*'
+      - 'coreunstable-*'
   schedule:
     - cron: '0 0 * * *' # once in a day at 00:00
 
 jobs:
-  build-pack:
-    runs-on: windows-latest
+  automation:
+    uses: ./.github/workflows/automation.yml
+    secrets: inherit
 
+  build-pack-publish:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+      id-token: write
     env:
-      RunningDotNetPack: true
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      COSIGN_YES: "yes"
+
+    outputs:
+      artifact-url: ${{ steps.upload-artifacts.outputs.artifact-url }}
+      artifact-id: ${{ steps.upload-artifacts.outputs.artifact-id }}
 
     steps:
     - uses: actions/checkout@v4
       with:
-        fetch-depth: 0 # fetching all
-        ref: ${{ github.ref || 'main' }}
+        # Note: By default GitHub only fetches 1 commit. MinVer needs to find
+        # the version tag which is typically NOT on the first commit so we
+        # retrieve them all.
+        fetch-depth: 0
 
     - name: Setup dotnet
-      uses: actions/setup-dotnet@v3
+      uses: actions/setup-dotnet@v4
 
-    - name: Install dependencies
-      run: dotnet restore OpenTelemetry.proj
+    - name: Install Cosign
+      uses: sigstore/cosign-installer@v3
+      with:
+        cosign-release: v2.4.0
+
+    - name: dotnet restore
+      run: dotnet restore ./build/OpenTelemetry.proj -p:RunningDotNetPack=true
 
     - name: dotnet build
-      run: dotnet build OpenTelemetry.proj --configuration Release --no-restore -p:Deterministic=true -p:BuildNumber=${{ github.run_number }}
+      run: dotnet build ./build/OpenTelemetry.proj --configuration Release --no-restore -p:Deterministic=true -p:BuildNumber=${{ github.run_number }} -p:RunningDotNetPack=true
+
+    - name: Sign DLLs with Cosign Keyless
+      shell: pwsh
+      run: |
+        $projectFiles = Get-ChildItem -Path src/*/*.csproj -File
+
+        foreach ($projectFile in $projectFiles) {
+            $projectName = [System.IO.Path]::GetFileNameWithoutExtension($projectFile)
+
+            Get-ChildItem -Path src/$projectName/bin/Release/*/$projectName.dll -File | ForEach-Object {
+                $fileFullPath = $_.FullName
+                Write-Host "Signing $fileFullPath"
+
+                cosign.exe sign-blob $fileFullPath --yes --output-signature $fileFullPath-keyless.sig --output-certificate $fileFullPath-keyless.pem
+            }
+        }
 
     - name: dotnet pack
-      run: dotnet pack OpenTelemetry.proj --configuration Release --no-build
+      run: dotnet pack ./build/OpenTelemetry.proj --configuration Release --no-restore --no-build -p:PackTag=${{ github.ref_type == 'tag' && github.ref_name || '' }}
 
     - name: Publish Artifacts
-      uses: actions/upload-artifact@v3
+      id: upload-artifacts
+      uses: actions/upload-artifact@v4
       with:
         name: ${{ github.ref_name }}-packages
-        path: '**/bin/**/*.*nupkg'
+        path: 'src/**/*.*nupkg'
 
     - name: Publish MyGet
+      env:
+        MYGET_TOKEN_EXISTS: ${{ secrets.MYGET_TOKEN != '' }}
+      if: env.MYGET_TOKEN_EXISTS == 'true' # Skip MyGet publish if run on a fork without the secret
       run: |
         nuget setApiKey ${{ secrets.MYGET_TOKEN }} -Source https://www.myget.org/F/opentelemetry/api/v2/package
-        nuget push **/bin/**/*.nupkg -Source https://www.myget.org/F/opentelemetry/api/v2/package
+        nuget push src/**/*.nupkg -Source https://www.myget.org/F/opentelemetry/api/v2/package
+
+  post-build:
+    runs-on: ubuntu-22.04
+
+    needs:
+    - automation
+    - build-pack-publish
+
+    if: needs.automation.outputs.enabled && github.event_name == 'push'
+
+    env:
+      GH_TOKEN: ${{ secrets[needs.automation.outputs.token-secret-name] }}
+
+    steps:
+    - name: check out code
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets[needs.automation.outputs.token-secret-name] }}
+
+    - name: Download Artifacts
+      run: |
+        curl \
+          -H "Accept: application/vnd.github+json" \
+          -H "Authorization: token ${{ github.token }}" \
+          -L \
+          -o '${{ github.workspace }}/artifacts/${{ github.ref_name }}-packages.zip' \
+          --create-dirs \
+          "https://api.github.com/repos/${{ github.repository }}/actions/artifacts/${{ needs.build-pack-publish.outputs.artifact-id }}/zip"
+
+    - name: Create GitHub Release draft
+      shell: pwsh
+      run: |
+        Import-Module .\build\scripts\post-release.psm1
+
+        CreateDraftRelease `
+          -gitRepository '${{ github.repository }}' `
+          -tag '${{ github.ref_name }}' `
+          -releaseFiles '${{ github.workspace }}/artifacts/${{ github.ref_name }}-packages.zip#Packages'
+
+    - name: Post notice when packages are ready
+      shell: pwsh
+      run: |
+        Import-Module .\build\scripts\post-release.psm1
+
+        TryPostPackagesReadyNoticeOnPrepareReleasePullRequest `
+          -gitRepository '${{ github.repository }}' `
+          -tag '${{ github.ref_name }}' `
+          -tagSha '${{ github.sha }}' `
+          -packagesUrl '${{ needs.build-pack-publish.outputs.artifact-url }}' `
+          -botUserName '${{ needs.automation.outputs.username }}'
+
+

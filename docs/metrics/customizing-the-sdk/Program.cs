@@ -1,18 +1,5 @@
-// <copyright file="Program.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
 using System.Diagnostics.Metrics;
 using OpenTelemetry;
@@ -29,7 +16,12 @@ public class Program
     public static void Main()
     {
         using var meterProvider = Sdk.CreateMeterProviderBuilder()
-            .ConfigureResource(res => res.AddService("example-service"))
+            .ConfigureResource(resource => resource.AddAttributes(new List<KeyValuePair<string, object>>
+                {
+                    new KeyValuePair<string, object>("static-attribute1", "v1"),
+                    new KeyValuePair<string, object>("static-attribute2", "v2"),
+                }))
+            .ConfigureResource(resource => resource.AddService("MyServiceName"))
             .AddMeter(Meter1.Name)
             .AddMeter(Meter2.Name)
 
@@ -48,17 +40,11 @@ public class Program
             // Drop the instrument "MyCounterDrop".
             .AddView(instrumentName: "MyCounterDrop", MetricStreamConfiguration.Drop)
 
-            // Advanced selection criteria and config via Func<Instrument, MetricStreamConfiguration>
-            .AddView((instrument) =>
-            {
-                if (instrument.Meter.Name.Equals("CompanyA.ProductB.Library2") &&
-                    instrument.GetType().Name.Contains("Histogram"))
-                {
-                    return new ExplicitBucketHistogramConfiguration() { Boundaries = new double[] { 10, 20 } };
-                }
+            // Configure the Explicit Bucket Histogram aggregation with custom boundaries and new name.
+            .AddView(instrumentName: "histogramWithMultipleAggregations", new ExplicitBucketHistogramConfiguration() { Boundaries = new double[] { 10, 20 }, Name = "MyHistogramWithExplicitHistogram" })
 
-                return null;
-            })
+            // Use Base2 Exponential Bucket Histogram aggregation and new name.
+            .AddView(instrumentName: "histogramWithMultipleAggregations", new Base2ExponentialBucketHistogramConfiguration() { Name = "MyHistogramWithBase2ExponentialBucketHistogram" })
 
             // An instrument which does not match any views
             // gets processed with default behavior. (SDK default)
@@ -88,6 +74,12 @@ public class Program
         for (int i = 0; i < 20000; i++)
         {
             exponentialBucketHistogram.Record(random.Next(1, 1000), new("tag1", "value1"), new("tag2", "value2"));
+        }
+
+        var histogramWithMultipleAggregations = Meter1.CreateHistogram<long>("histogramWithMultipleAggregations");
+        for (int i = 0; i < 20000; i++)
+        {
+            histogramWithMultipleAggregations.Record(random.Next(1, 1000), new("tag1", "value1"), new("tag2", "value2"));
         }
 
         var counterCustomTags = Meter1.CreateCounter<long>("MyCounterCustomTags");

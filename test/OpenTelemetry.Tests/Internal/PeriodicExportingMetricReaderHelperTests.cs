@@ -1,20 +1,5 @@
-// <copyright file="PeriodicExportingMetricReaderHelperTests.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
-
-#nullable enable
+// SPDX-License-Identifier: Apache-2.0
 
 using Microsoft.Extensions.Configuration;
 using OpenTelemetry.Exporter;
@@ -112,7 +97,7 @@ public sealed class PeriodicExportingMetricReaderHelperTests : IDisposable
     [Fact]
     public void CreatePeriodicExportingMetricReader_FromIConfiguration()
     {
-        var values = new Dictionary<string, string>()
+        var values = new Dictionary<string, string?>()
         {
             [PeriodicExportingMetricReaderOptions.OTelMetricExportIntervalEnvVarKey] = "18",
             [PeriodicExportingMetricReaderOptions.OTelMetricExportTimeoutEnvVarKey] = "19",
@@ -122,10 +107,10 @@ public sealed class PeriodicExportingMetricReaderHelperTests : IDisposable
             .AddInMemoryCollection(values)
             .Build();
 
-        var options = new MetricReaderOptions(configuration);
+        var options = new PeriodicExportingMetricReaderOptions(configuration);
 
-        Assert.Equal(18, options.PeriodicExportingMetricReaderOptions.ExportIntervalMilliseconds);
-        Assert.Equal(19, options.PeriodicExportingMetricReaderOptions.ExportTimeoutMilliseconds);
+        Assert.Equal(18, options.ExportIntervalMilliseconds);
+        Assert.Equal(19, options.ExportTimeoutMilliseconds);
     }
 
     [Fact]

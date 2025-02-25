@@ -1,18 +1,5 @@
-// <copyright file="ConsoleMetricExporter.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
 using System.Globalization;
 using System.Text;
@@ -23,8 +10,6 @@ namespace OpenTelemetry.Exporter;
 
 public class ConsoleMetricExporter : ConsoleExporter<Metric>
 {
-    private Resource resource;
-
     public ConsoleMetricExporter(ConsoleExporterOptions options)
         : base(options)
     {
@@ -32,45 +17,18 @@ public class ConsoleMetricExporter : ConsoleExporter<Metric>
 
     public override ExportResult Export(in Batch<Metric> batch)
     {
-        if (this.resource == null)
-        {
-            this.resource = this.ParentProvider.GetResource();
-            if (this.resource != Resource.Empty)
-            {
-                this.WriteLine("Resource associated with Metric:");
-                foreach (var resourceAttribute in this.resource.Attributes)
-                {
-                    if (ConsoleTagTransformer.Instance.TryTransformTag(resourceAttribute, out var result))
-                    {
-                        this.WriteLine($"    {result}");
-                    }
-                }
-            }
-        }
-
         foreach (var metric in batch)
         {
-            var msg = new StringBuilder($"\nExport ");
-            msg.Append(metric.Name);
+            var msg = new StringBuilder($"\n");
+            msg.Append($"Metric Name: {metric.Name}");
             if (metric.Description != string.Empty)
             {
-                msg.Append(", ");
-                msg.Append(metric.Description);
+                msg.Append($", Description: {metric.Description}");
             }
 
             if (metric.Unit != string.Empty)
             {
                 msg.Append($", Unit: {metric.Unit}");
-            }
-
-            if (!string.IsNullOrEmpty(metric.MeterName))
-            {
-                msg.Append($", Meter: {metric.MeterName}");
-
-                if (!string.IsNullOrEmpty(metric.MeterVersion))
-                {
-                    msg.Append($"/{metric.MeterVersion}");
-                }
             }
 
             this.WriteLine(msg.ToString());
@@ -81,9 +39,9 @@ public class ConsoleMetricExporter : ConsoleExporter<Metric>
                 StringBuilder tagsBuilder = new StringBuilder();
                 foreach (var tag in metricPoint.Tags)
                 {
-                    if (ConsoleTagTransformer.Instance.TryTransformTag(tag, out var result))
+                    if (this.TagWriter.TryTransformTag(tag, out var result))
                     {
-                        tagsBuilder.Append(result);
+                        tagsBuilder.Append($"{result.Key}: {result.Value}");
                         tagsBuilder.Append(' ');
                     }
                 }
@@ -189,30 +147,44 @@ public class ConsoleMetricExporter : ConsoleExporter<Metric>
                 }
 
                 var exemplarString = new StringBuilder();
-                foreach (var exemplar in metricPoint.GetExemplars())
+                if (metricPoint.TryGetExemplars(out var exemplars))
                 {
-                    if (exemplar.Timestamp != default)
+                    foreach (ref readonly var exemplar in exemplars)
                     {
-                        exemplarString.Append("Value: ");
-                        exemplarString.Append(exemplar.DoubleValue);
-                        exemplarString.Append(" Timestamp: ");
+                        exemplarString.Append("Timestamp: ");
                         exemplarString.Append(exemplar.Timestamp.ToString("yyyy-MM-ddTHH:mm:ss.fffffffZ", CultureInfo.InvariantCulture));
-                        exemplarString.Append(" TraceId: ");
-                        exemplarString.Append(exemplar.TraceId);
-                        exemplarString.Append(" SpanId: ");
-                        exemplarString.Append(exemplar.SpanId);
-
-                        if (exemplar.FilteredTags != null && exemplar.FilteredTags.Count > 0)
+                        if (metricType.IsDouble())
                         {
-                            exemplarString.Append(" Filtered Tags : ");
+                            exemplarString.Append(" Value: ");
+                            exemplarString.Append(exemplar.DoubleValue);
+                        }
+                        else if (metricType.IsLong())
+                        {
+                            exemplarString.Append(" Value: ");
+                            exemplarString.Append(exemplar.LongValue);
+                        }
 
-                            foreach (var tag in exemplar.FilteredTags)
+                        if (exemplar.TraceId != default)
+                        {
+                            exemplarString.Append(" TraceId: ");
+                            exemplarString.Append(exemplar.TraceId.ToHexString());
+                            exemplarString.Append(" SpanId: ");
+                            exemplarString.Append(exemplar.SpanId.ToHexString());
+                        }
+
+                        bool appendedTagString = false;
+                        foreach (var tag in exemplar.FilteredTags)
+                        {
+                            if (this.TagWriter.TryTransformTag(tag, out var result))
                             {
-                                if (ConsoleTagTransformer.Instance.TryTransformTag(tag, out var result))
+                                if (!appendedTagString)
                                 {
-                                    exemplarString.Append(result);
-                                    exemplarString.Append(' ');
+                                    exemplarString.Append(" Filtered Tags: ");
+                                    appendedTagString = true;
                                 }
+
+                                exemplarString.Append($"{result.Key}: {result.Value}");
+                                exemplarString.Append(' ');
                             }
                         }
 
@@ -244,6 +216,38 @@ public class ConsoleMetricExporter : ConsoleExporter<Metric>
                 }
 
                 this.WriteLine(msg.ToString());
+
+                this.WriteLine("Instrumentation scope (Meter):");
+                this.WriteLine($"\tName: {metric.MeterName}");
+                if (!string.IsNullOrEmpty(metric.MeterVersion))
+                {
+                    this.WriteLine($"\tVersion: {metric.MeterVersion}");
+                }
+
+                if (metric.MeterTags?.Any() == true)
+                {
+                    this.WriteLine("\tTags:");
+                    foreach (var meterTag in metric.MeterTags)
+                    {
+                        if (this.TagWriter.TryTransformTag(meterTag, out var result))
+                        {
+                            this.WriteLine($"\t\t{result.Key}: {result.Value}");
+                        }
+                    }
+                }
+
+                var resource = this.ParentProvider.GetResource();
+                if (resource != Resource.Empty)
+                {
+                    this.WriteLine("Resource associated with Metric:");
+                    foreach (var resourceAttribute in resource.Attributes)
+                    {
+                        if (this.TagWriter.TryTransformTag(resourceAttribute.Key, resourceAttribute.Value, out var result))
+                        {
+                            this.WriteLine($"\t{result.Key}: {result.Value}");
+                        }
+                    }
+                }
             }
         }
 

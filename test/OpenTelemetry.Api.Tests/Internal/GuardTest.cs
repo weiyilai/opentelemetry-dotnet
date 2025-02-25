@@ -1,18 +1,5 @@
-// <copyright file="GuardTest.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
 #if NETFRAMEWORK
 using System.Runtime.CompilerServices;
@@ -33,17 +20,17 @@ public class GuardTest
         Guard.ThrowIfNull("hello");
 
         // Invalid
-        object potato = null;
+        object? potato = null;
         var ex1 = Assert.Throws<ArgumentNullException>(() => Guard.ThrowIfNull(potato));
         Assert.Contains("Must not be null", ex1.Message);
         Assert.Equal("potato", ex1.ParamName);
 
-        object @event = null;
+        object? @event = null;
         var ex2 = Assert.Throws<ArgumentNullException>(() => Guard.ThrowIfNull(@event));
         Assert.Contains("Must not be null", ex2.Message);
         Assert.Equal("@event", ex2.ParamName);
 
-        Thing thing = null;
+        Thing? thing = null;
         var ex3 = Assert.Throws<ArgumentNullException>(() => Guard.ThrowIfNull(thing?.Bar));
         Assert.Contains("Must not be null", ex3.Message);
         Assert.Equal("thing?.Bar", ex3.ParamName);
@@ -166,12 +153,12 @@ public class GuardTest
 
     public class Thing
     {
-        public string Bar { get; set; }
+        public string? Bar { get; set; }
     }
 
-#if !NET6_0_OR_GREATER
+#if !NET
     /// <summary>
-    /// Borrowed from: <see href="https://github.com/dotnet/runtime/blob/main/src/libraries/System.Runtime/tests/System/Runtime/CompilerServices/CallerArgumentExpressionAttributeTests.cs"/>.
+    /// Borrowed from: <see href="https://github.com/dotnet/runtime/blob/main/src/libraries/System.Runtime/tests/System.Runtime.Tests/System/Runtime/CompilerServices/CallerArgumentExpressionAttributeTests.cs"/>.
     /// </summary>
     public class CallerArgumentExpressionAttributeTests
     {
@@ -179,7 +166,7 @@ public class GuardTest
         [InlineData(null)]
         [InlineData("")]
         [InlineData("paramName")]
-        public static void Ctor_ParameterName_Roundtrip(string value)
+        public static void Ctor_ParameterName_Roundtrip(string? value)
         {
             var caea = new CallerArgumentExpressionAttribute(value);
             Assert.Equal(value, caea.ParameterName);
@@ -188,12 +175,13 @@ public class GuardTest
         [Fact]
         public static void BasicTest()
         {
+            Assert.Equal("null", GetValue(null));
             Assert.Equal("\"hello\"", GetValue("hello"));
             Assert.Equal("3 + 2", GetValue(3 + 2));
             Assert.Equal("new object()", GetValue(new object()));
         }
 
-        private static string GetValue(object argument, [CallerArgumentExpression("argument")] string expr = null) => expr;
+        private static string? GetValue(object? argument, [CallerArgumentExpression(nameof(argument))] string? expr = null) => expr;
     }
 #endif
 }

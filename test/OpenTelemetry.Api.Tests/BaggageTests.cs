@@ -1,18 +1,5 @@
-// <copyright file="BaggageTests.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
 using Xunit;
 
@@ -40,8 +27,8 @@ public class BaggageTests
     {
         var list = new List<KeyValuePair<string, string>>(2)
         {
-            new KeyValuePair<string, string>(K1, V1),
-            new KeyValuePair<string, string>(K2, V2),
+            new(K1, V1),
+            new(K2, V2),
         };
 
         Baggage.SetBaggage(K1, V1);
@@ -57,7 +44,7 @@ public class BaggageTests
         Assert.Null(Baggage.GetBaggage("NO_KEY"));
         Assert.Equal(V2, Baggage.Current.GetBaggage(K2));
 
-        Assert.Throws<ArgumentException>(() => Baggage.GetBaggage(null));
+        Assert.Throws<ArgumentException>(() => Baggage.GetBaggage(null!));
     }
 
     [Fact]
@@ -65,12 +52,12 @@ public class BaggageTests
     {
         var list = new List<KeyValuePair<string, string>>(2)
         {
-            new KeyValuePair<string, string>(K1, V1),
+            new(K1, V1),
         };
 
-        Baggage.Current.SetBaggage(new KeyValuePair<string, string>(K1, V1));
+        Baggage.Current.SetBaggage(new KeyValuePair<string, string?>(K1, V1));
         var baggage = Baggage.SetBaggage(K1, V1);
-        Baggage.SetBaggage(new Dictionary<string, string> { [K1] = V1 }, baggage);
+        Baggage.SetBaggage(new Dictionary<string, string?> { [K1] = V1 }, baggage);
 
         Assert.Equal(list, Baggage.GetBaggage());
     }
@@ -91,7 +78,7 @@ public class BaggageTests
         Assert.Empty(Baggage.SetBaggage(K1, null).GetBaggage());
 
         Baggage.SetBaggage(K1, V1);
-        Baggage.SetBaggage(new Dictionary<string, string>
+        Baggage.SetBaggage(new Dictionary<string, string?>
         {
             [K1] = null,
             [K2] = V2,
@@ -107,7 +94,7 @@ public class BaggageTests
         var empty2 = Baggage.RemoveBaggage(K1);
         Assert.True(empty == empty2);
 
-        var baggage = Baggage.SetBaggage(new Dictionary<string, string>
+        var baggage = Baggage.SetBaggage(new Dictionary<string, string?>
         {
             [K1] = V1,
             [K2] = V2,
@@ -125,7 +112,7 @@ public class BaggageTests
     [Fact]
     public void ClearTest()
     {
-        var baggage = Baggage.SetBaggage(new Dictionary<string, string>
+        var baggage = Baggage.SetBaggage(new Dictionary<string, string?>
         {
             [K1] = V1,
             [K2] = V2,
@@ -164,8 +151,8 @@ public class BaggageTests
     {
         var list = new List<KeyValuePair<string, string>>(2)
         {
-            new KeyValuePair<string, string>(K1, V1),
-            new KeyValuePair<string, string>(K2, V2),
+            new(K1, V1),
+            new(K2, V2),
         };
 
         var baggage = Baggage.SetBaggage(K1, V1);
@@ -191,11 +178,11 @@ public class BaggageTests
     [Fact]
     public void EqualsTest()
     {
-        var bc1 = new Baggage(new Dictionary<string, string>() { [K1] = V1, [K2] = V2 });
-        var bc2 = new Baggage(new Dictionary<string, string>() { [K1] = V1, [K2] = V2 });
-        var bc3 = new Baggage(new Dictionary<string, string>() { [K2] = V2, [K1] = V1 });
-        var bc4 = new Baggage(new Dictionary<string, string>() { [K1] = V1, [K2] = V1 });
-        var bc5 = new Baggage(new Dictionary<string, string>() { [K1] = V2, [K2] = V1 });
+        var bc1 = new Baggage(new Dictionary<string, string> { [K1] = V1, [K2] = V2 });
+        var bc2 = new Baggage(new Dictionary<string, string> { [K1] = V1, [K2] = V2 });
+        var bc3 = new Baggage(new Dictionary<string, string> { [K2] = V2, [K1] = V1 });
+        var bc4 = new Baggage(new Dictionary<string, string> { [K1] = V1, [K2] = V1 });
+        var bc5 = new Baggage(new Dictionary<string, string> { [K1] = V2, [K2] = V1 });
 
         Assert.True(bc1.Equals(bc2));
 
@@ -220,7 +207,7 @@ public class BaggageTests
             ["key2"] = "value2",
             ["KEY2"] = "VALUE2",
             ["KEY3"] = "VALUE3",
-            ["Key3"] = null,
+            ["Key3"] = null!, // Note: This causes Key3 to be removed
         });
 
         Assert.Equal(2, baggage.Count);
@@ -245,7 +232,7 @@ public class BaggageTests
 
         baggage = Baggage.SetBaggage(K1, V1);
 
-        var baggage2 = Baggage.SetBaggage(null);
+        var baggage2 = Baggage.SetBaggage(null!);
 
         Assert.Equal(baggage, baggage2);
 
@@ -275,7 +262,7 @@ public class BaggageTests
     {
         Baggage.SetBaggage("key1", "value1");
 
-        await InnerTask().ConfigureAwait(false);
+        await InnerTask();
 
         Baggage.SetBaggage("key4", "value4");
 

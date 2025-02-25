@@ -1,18 +1,5 @@
-// <copyright file="BaseProcessor.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
 using OpenTelemetry.Internal;
 
@@ -39,6 +26,18 @@ public abstract class BaseProcessor<T> : IDisposable
     /// Gets the parent <see cref="BaseProvider"/>.
     /// </summary>
     public BaseProvider? ParentProvider { get; private set; }
+
+    /// <summary>
+    /// Gets or sets the weight of the processor when added to the provider
+    /// pipeline. Default value: <c>0</c>.
+    /// </summary>
+    /// <remarks>
+    /// Note: Weight is used to order processors when building a provider
+    /// pipeline. Lower weighted processors come before higher weighted
+    /// processors. Changing the weight after a pipeline has been constructed
+    /// has no effect.
+    /// </remarks>
+    internal int PipelineWeight { get; set; }
 
     /// <summary>
     /// Called synchronously when a telemetry object is started.

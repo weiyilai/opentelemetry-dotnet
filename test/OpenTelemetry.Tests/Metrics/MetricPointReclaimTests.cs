@@ -1,22 +1,7 @@
-// <copyright file="MetricPointReclaimTests.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
-using System.Collections.Concurrent;
 using System.Diagnostics.Metrics;
-using System.Reflection;
 using OpenTelemetry.Tests;
 using Xunit;
 
@@ -35,7 +20,7 @@ public class MetricPointReclaimTests
         int numberOfUpdateThreads = 25;
         int maxNumberofDistinctMetricPoints = 4000; // Default max MetricPoints * 2
 
-        using var exporter = new CustomExporter();
+        using var exporter = new CustomExporter(assertNoDroppedMeasurements: true);
         using var metricReader = new PeriodicExportingMetricReader(exporter, exportIntervalMilliseconds: 10)
         {
             TemporalityPreference = MetricReaderTemporalityPreference.Delta,
@@ -64,11 +49,11 @@ public class MetricPointReclaimTests
                     // There are separate code paths for single dimension vs multiple dimensions
                     if (random.Next(2) == 0)
                     {
-                        counter.Add(100, new KeyValuePair<string, object>("key", $"value{i}"));
+                        counter.Add(100, new KeyValuePair<string, object?>("key", $"value{i}"));
                     }
                     else
                     {
-                        counter.Add(100, new KeyValuePair<string, object>("key", $"value{i}"), new KeyValuePair<string, object>("dimensionKey", "dimensionValue"));
+                        counter.Add(100, new KeyValuePair<string, object?>("key", $"value{i}"), new KeyValuePair<string, object?>("dimensionKey", "dimensionValue"));
                     }
 
                     Thread.Sleep(25);
@@ -113,18 +98,18 @@ public class MetricPointReclaimTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void MeasurementsAreAggregatedAfterMetricPointReclaim(bool emitMetricWithNoDimension)
+    public void MeasurementsAreAggregatedEvenAfterTheyAreDropped(bool emitMetricWithNoDimension)
     {
         var meter = new Meter(Utils.GetCurrentMethodName());
         var counter = meter.CreateCounter<long>("MyFruitCounter");
 
         long sum = 0;
-        var measurementValues = new long[] { 10, 20 };
+        var measurementValues = new long[] { 10, 20, 30, 40, 50, 60, 70, 80, 90, 100 };
 
         int numberOfUpdateThreads = 4;
         int numberOfMeasurementsPerThread = 10;
 
-        using var exporter = new CustomExporter();
+        using var exporter = new CustomExporter(assertNoDroppedMeasurements: false);
         using var metricReader = new PeriodicExportingMetricReader(exporter, exportIntervalMilliseconds: 10)
         {
             TemporalityPreference = MetricReaderTemporalityPreference.Delta,
@@ -132,15 +117,17 @@ public class MetricPointReclaimTests
 
         using var meterProvider = Sdk.CreateMeterProviderBuilder()
             .AddMeter(Utils.GetCurrentMethodName())
-            .SetMaxMetricPointsPerMetricStream(10) // Set max MetricPoints limit to 5
+            .SetMaxMetricPointsPerMetricStream(10) // Set max MetricPoints limit to 10
             .AddReader(metricReader)
             .Build();
 
-        // Add nine distinct combinations of dimensions to switch AggregatorStore Snapshot behavior
-        // to start reclaiming Metric Points. (One MetricPoint is reserved for metric point with no dimensions)
-        for (int i = 1; i < 10; i++)
+        // Add 10 distinct combinations of dimensions to surpass the max metric points limit of 10.
+        // Note that one MetricPoint is reserved for zero tags and one MetricPoint is reserved for the overflow tag.
+        // This would lead to dropping a few measurements. We want to make sure that they can still be
+        // aggregated later on when there are free MetricPoints available.
+        for (int i = 0; i < 10; i++)
         {
-            counter.Add(100, new KeyValuePair<string, object>("key", Guid.NewGuid()));
+            counter.Add(100, new KeyValuePair<string, object?>("key", $"value{i}"));
         }
 
         meterProvider.ForceFlush();
@@ -152,12 +139,12 @@ public class MetricPointReclaimTests
         {
             int numberOfMeasurements = 0;
             var random = new Random();
-            while (emitMetricWithNoDimension)
+            while (true)
             {
                 if (numberOfMeasurements < numberOfMeasurementsPerThread)
                 {
                     // Check for cases where a metric with no dimension is also emitted
-                    if (true)
+                    if (emitMetricWithNoDimension)
                     {
                         counter.Add(25);
                         Interlocked.Add(ref sum, 25);
@@ -165,7 +152,7 @@ public class MetricPointReclaimTests
 
                     var index = random.Next(measurementValues.Length);
                     var measurement = measurementValues[index];
-                    counter.Add(measurement, new KeyValuePair<string, object>("key", $"value{index}"));
+                    counter.Add(measurement, new KeyValuePair<string, object?>("key", $"value{index}"));
                     Interlocked.Add(ref sum, measurement);
 
                     numberOfMeasurements++;
@@ -196,41 +183,38 @@ public class MetricPointReclaimTests
         Assert.Equal(sum, exporter.Sum);
     }
 
-    private class ThreadArguments
+    private sealed class ThreadArguments
     {
         public int Counter;
     }
 
-    private class CustomExporter : BaseExporter<Metric>
+    private sealed class CustomExporter : BaseExporter<Metric>
     {
         public long Sum = 0;
 
-        private readonly FieldInfo aggStoreFieldInfo;
+        private readonly bool assertNoDroppedMeasurements;
 
-        private readonly FieldInfo metricPointLookupDictionaryFieldInfo;
-
-        public CustomExporter()
+        public CustomExporter(bool assertNoDroppedMeasurements)
         {
-            var metricFields = typeof(Metric).GetFields(BindingFlags.NonPublic | BindingFlags.Instance);
-            this.aggStoreFieldInfo = metricFields!.FirstOrDefault(field => field.Name == "aggStore");
-
-            var aggregatorStoreFields = typeof(AggregatorStore).GetFields(BindingFlags.NonPublic | BindingFlags.Instance);
-            this.metricPointLookupDictionaryFieldInfo = aggregatorStoreFields!.FirstOrDefault(field => field.Name == "tagsToMetricPointIndexDictionaryDelta");
+            this.assertNoDroppedMeasurements = assertNoDroppedMeasurements;
         }
 
         public override ExportResult Export(in Batch<Metric> batch)
         {
             foreach (var metric in batch)
             {
-                var aggStore = this.aggStoreFieldInfo.GetValue(metric) as AggregatorStore;
-                var metricPointLookupDictionary = this.metricPointLookupDictionaryFieldInfo.GetValue(aggStore) as ConcurrentDictionary<Tags, LookupData>;
-
+                var aggStore = metric.AggregatorStore;
+                var metricPointLookupDictionary = aggStore.TagsToMetricPointIndexDictionaryDelta;
                 var droppedMeasurements = aggStore.DroppedMeasurements;
 
-                Assert.Equal(0, droppedMeasurements);
+                if (this.assertNoDroppedMeasurements)
+                {
+                    Assert.Equal(0, droppedMeasurements);
+                }
 
                 // This is to ensure that the lookup dictionary does not have unbounded growth
-                Assert.True(metricPointLookupDictionary.Count <= (MeterProviderBuilderSdk.MaxMetricPointsPerMetricDefault * 2));
+                Assert.NotNull(metricPointLookupDictionary);
+                Assert.True(metricPointLookupDictionary.Count <= (MeterProviderBuilderSdk.DefaultCardinalityLimit * 2));
 
                 foreach (ref readonly var metricPoint in metric.GetMetricPoints())
                 {

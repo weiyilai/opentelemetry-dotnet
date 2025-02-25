@@ -1,19 +1,9 @@
-// <copyright file="Metric.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
+#if NET
+using System.Collections.Frozen;
+#endif
 using System.Diagnostics.Metrics;
 
 namespace OpenTelemetry.Metrics;
@@ -28,31 +18,60 @@ public sealed class Metric
     internal const int DefaultExponentialHistogramMaxScale = 20;
 
     internal static readonly double[] DefaultHistogramBounds = new double[] { 0, 5, 10, 25, 50, 75, 100, 250, 500, 750, 1000, 2500, 5000, 7500, 10000 };
-    internal static readonly double[] DefaultHistogramBoundsSeconds = new double[] { 0, 0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10 };
-    internal static readonly HashSet<(string, string)> DefaultHistogramBoundMappings = new()
+
+    // Short default histogram bounds. Based on the recommended semantic convention values for http.server.request.duration.
+    internal static readonly double[] DefaultHistogramBoundsShortSeconds = new double[] { 0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10 };
+    internal static readonly
+#if NET
+    FrozenSet<(string, string)>
+#else
+    HashSet<(string, string)>
+#endif
+    DefaultHistogramBoundShortMappings = new HashSet<(string, string)>
     {
         ("Microsoft.AspNetCore.Hosting", "http.server.request.duration"),
-        ("Microsoft.AspNetCore.Http.Connections", "signalr.server.connection.duration"),
         ("Microsoft.AspNetCore.RateLimiting", "aspnetcore.rate_limiting.request.time_in_queue"),
         ("Microsoft.AspNetCore.RateLimiting", "aspnetcore.rate_limiting.request_lease.duration"),
-        ("Microsoft.AspNetCore.Server.Kestrel", "kestrel.connection.duration"),
         ("Microsoft.AspNetCore.Server.Kestrel", "kestrel.tls_handshake.duration"),
+        ("OpenTelemetry.Instrumentation.AspNet", "http.server.request.duration"),
         ("OpenTelemetry.Instrumentation.AspNetCore", "http.server.request.duration"),
         ("OpenTelemetry.Instrumentation.Http", "http.client.request.duration"),
-        ("System.Net.Http", "http.client.connection.duration"),
         ("System.Net.Http", "http.client.request.duration"),
         ("System.Net.Http", "http.client.request.time_in_queue"),
-        ("System.Net.NameResolution", "dns.lookups.duration"),
-    };
+        ("System.Net.NameResolution", "dns.lookup.duration"),
+    }
+#if NET
+    .ToFrozenSet()
+#endif
+    ;
 
-    private readonly AggregatorStore aggStore;
+    // Long default histogram bounds. Not based on a standard. May change in the future.
+    internal static readonly double[] DefaultHistogramBoundsLongSeconds = new double[] { 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 30, 60, 120, 300 };
+    internal static readonly
+#if NET
+    FrozenSet<(string, string)>
+#else
+    HashSet<(string, string)>
+#endif
+    DefaultHistogramBoundLongMappings = new HashSet<(string, string)>
+    {
+        ("Microsoft.AspNetCore.Http.Connections", "signalr.server.connection.duration"),
+        ("Microsoft.AspNetCore.Server.Kestrel", "kestrel.connection.duration"),
+        ("System.Net.Http", "http.client.connection.duration"),
+    }
+#if NET
+    .ToFrozenSet()
+#endif
+    ;
+
+    internal readonly AggregatorStore AggregatorStore;
 
     internal Metric(
         MetricStreamIdentity instrumentIdentity,
         AggregationTemporality temporality,
-        int maxMetricPointsPerMetricStream,
-        bool emitOverflowAttribute,
-        ExemplarFilter? exemplarFilter = null)
+        int cardinalityLimit,
+        ExemplarFilterType? exemplarFilter = null,
+        Func<ExemplarReservoir?>? exemplarReservoirFactory = null)
     {
         this.InstrumentIdentity = instrumentIdentity;
 
@@ -119,6 +138,12 @@ public sealed class Metric
             aggType = AggregationType.DoubleGauge;
             this.MetricType = MetricType.DoubleGauge;
         }
+        else if (instrumentIdentity.InstrumentType == typeof(Gauge<double>)
+            || instrumentIdentity.InstrumentType == typeof(Gauge<float>))
+        {
+            aggType = AggregationType.DoubleGauge;
+            this.MetricType = MetricType.DoubleGauge;
+        }
         else if (instrumentIdentity.InstrumentType == typeof(ObservableGauge<long>)
             || instrumentIdentity.InstrumentType == typeof(ObservableGauge<int>)
             || instrumentIdentity.InstrumentType == typeof(ObservableGauge<short>)
@@ -127,12 +152,15 @@ public sealed class Metric
             aggType = AggregationType.LongGauge;
             this.MetricType = MetricType.LongGauge;
         }
-        else if (instrumentIdentity.InstrumentType == typeof(Histogram<long>)
-            || instrumentIdentity.InstrumentType == typeof(Histogram<int>)
-            || instrumentIdentity.InstrumentType == typeof(Histogram<short>)
-            || instrumentIdentity.InstrumentType == typeof(Histogram<byte>)
-            || instrumentIdentity.InstrumentType == typeof(Histogram<float>)
-            || instrumentIdentity.InstrumentType == typeof(Histogram<double>))
+        else if (instrumentIdentity.InstrumentType == typeof(Gauge<long>)
+            || instrumentIdentity.InstrumentType == typeof(Gauge<int>)
+            || instrumentIdentity.InstrumentType == typeof(Gauge<short>)
+            || instrumentIdentity.InstrumentType == typeof(Gauge<byte>))
+        {
+            aggType = AggregationType.LongGauge;
+            this.MetricType = MetricType.LongGauge;
+        }
+        else if (instrumentIdentity.IsHistogram)
         {
             var explicitBucketBounds = instrumentIdentity.HistogramBucketBounds;
             var exponentialMaxSize = instrumentIdentity.ExponentialHistogramMaxSize;
@@ -158,9 +186,14 @@ public sealed class Metric
             throw new NotSupportedException($"Unsupported Instrument Type: {instrumentIdentity.InstrumentType.FullName}");
         }
 
-        this.aggStore = new AggregatorStore(instrumentIdentity, aggType, temporality, maxMetricPointsPerMetricStream, emitOverflowAttribute, exemplarFilter);
+        this.AggregatorStore = new AggregatorStore(
+            instrumentIdentity,
+            aggType,
+            temporality,
+            cardinalityLimit,
+            exemplarFilter,
+            exemplarReservoirFactory);
         this.Temporality = temporality;
-        this.InstrumentDisposed = false;
     }
 
     /// <summary>
@@ -199,25 +232,30 @@ public sealed class Metric
     public string MeterVersion => this.InstrumentIdentity.MeterVersion;
 
     /// <summary>
+    /// Gets the attributes (tags) for the metric stream.
+    /// </summary>
+    public IEnumerable<KeyValuePair<string, object?>>? MeterTags => this.InstrumentIdentity.MeterTags?.KeyValuePairs;
+
+    /// <summary>
     /// Gets the <see cref="MetricStreamIdentity"/> for the metric stream.
     /// </summary>
     internal MetricStreamIdentity InstrumentIdentity { get; private set; }
 
-    internal bool InstrumentDisposed { get; set; }
+    internal bool Active { get; set; } = true;
 
     /// <summary>
     /// Get the metric points for the metric stream.
     /// </summary>
     /// <returns><see cref="MetricPointsAccessor"/>.</returns>
     public MetricPointsAccessor GetMetricPoints()
-        => this.aggStore.GetMetricPoints();
+        => this.AggregatorStore.GetMetricPoints();
 
     internal void UpdateLong(long value, ReadOnlySpan<KeyValuePair<string, object?>> tags)
-        => this.aggStore.Update(value, tags);
+        => this.AggregatorStore.Update(value, tags);
 
     internal void UpdateDouble(double value, ReadOnlySpan<KeyValuePair<string, object?>> tags)
-        => this.aggStore.Update(value, tags);
+        => this.AggregatorStore.Update(value, tags);
 
     internal int Snapshot()
-        => this.aggStore.Snapshot();
+        => this.AggregatorStore.Snapshot();
 }

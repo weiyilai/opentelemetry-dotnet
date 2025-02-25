@@ -1,20 +1,5 @@
-// <copyright file="Base2ExponentialBucketHistogramHelper.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
-
-#nullable enable
+// SPDX-License-Identifier: Apache-2.0
 
 namespace OpenTelemetry.Metrics;
 
@@ -36,7 +21,7 @@ internal static class Base2ExponentialBucketHistogramHelper
     {
         if (scale > 0)
         {
-#if NET6_0_OR_GREATER
+#if NET
             var inverseFactor = Math.ScaleB(Ln2, -scale);
 #else
             var inverseFactor = ScaleB(Ln2, -scale);
@@ -62,7 +47,7 @@ internal static class Base2ExponentialBucketHistogramHelper
                 return double.Epsilon;
             }
 
-#if NET6_0_OR_GREATER
+#if NET
             return Math.ScaleB(1, n);
 #else
             return ScaleB(1, n);
@@ -70,7 +55,7 @@ internal static class Base2ExponentialBucketHistogramHelper
         }
     }
 
-#if !NET6_0_OR_GREATER
+#if !NET
     // Math.ScaleB was introduced in .NET Core 3.0.
     // This implementation is from:
     // https://github.com/dotnet/runtime/blob/v7.0.0/src/libraries/System.Private.CoreLib/src/System/Math.cs#L1494

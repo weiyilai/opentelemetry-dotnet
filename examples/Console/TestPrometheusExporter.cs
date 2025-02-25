@@ -1,18 +1,5 @@
-// <copyright file="TestPrometheusExporter.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
@@ -30,7 +17,7 @@ internal class TestPrometheusExporter
     private static readonly Histogram<long> MyHistogram = MyMeter.CreateHistogram<long>("myHistogram");
     private static readonly ThreadLocal<Random> ThreadLocalRandom = new(() => new Random());
 
-    internal static object Run(int port)
+    internal static int Run(PrometheusOptions options)
     {
         /* prometheus.yml example. Adjust port as per actual.
 
@@ -48,7 +35,7 @@ internal class TestPrometheusExporter
             .AddMeter(MyMeter.Name)
             .AddMeter(MyMeter2.Name)
             .AddPrometheusHttpListener(
-                options => options.UriPrefixes = new string[] { $"http://localhost:{port}/" })
+                o => o.UriPrefixes = new string[] { $"http://localhost:{options.Port}/" })
             .Build();
 
         var process = Process.GetCurrentProcess();
@@ -70,12 +57,12 @@ internal class TestPrometheusExporter
             {
                 Counter.Add(9.9, new("name", "apple"), new("color", "red"));
                 Counter.Add(99.9, new("name", "lemon"), new("color", "yellow"));
-                MyHistogram.Record(ThreadLocalRandom.Value.Next(1, 1500), new("tag1", "value1"), new("tag2", "value2"));
+                MyHistogram.Record(ThreadLocalRandom.Value!.Next(1, 1500), new("tag1", "value1"), new("tag2", "value2"));
                 Task.Delay(10).Wait();
             }
         });
 
-        System.Console.WriteLine($"PrometheusExporter exposes metrics via http://localhost:{port}/metrics/");
+        System.Console.WriteLine($"PrometheusExporter exposes metrics via http://localhost:{options.Port}/metrics/");
         System.Console.WriteLine($"Press Esc key to exit...");
         while (true)
         {
@@ -93,7 +80,7 @@ internal class TestPrometheusExporter
             Task.Delay(200).Wait();
         }
 
-        return null;
+        return 0;
     }
 
     private static IEnumerable<Measurement<double>> GetThreadCpuTime(Process process)

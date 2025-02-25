@@ -1,18 +1,6 @@
-// <copyright file="B3PropagatorTest.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
+
 using System.Diagnostics;
 using OpenTelemetry.Context.Propagation;
 using Xunit;
@@ -37,8 +25,12 @@ public class B3PropagatorTest
     private static readonly Func<IDictionary<string, string>, string, IEnumerable<string>> Getter =
         (d, k) =>
         {
-            d.TryGetValue(k, out var v);
-            return new string[] { v };
+            if (d.TryGetValue(k, out var v))
+            {
+                return [v];
+            }
+
+            return [];
         };
 
     private readonly B3Propagator b3propagator = new();
@@ -366,6 +358,7 @@ public class B3PropagatorTest
     [Fact]
     public void Fields_list()
     {
+        Assert.Equivalent(this.b3propagator.Fields, new List<string> { B3Propagator.XB3TraceId, B3Propagator.XB3SpanId, B3Propagator.XB3ParentSpanId, B3Propagator.XB3Sampled, B3Propagator.XB3Flags, B3Propagator.XB3Flags });
         ContainsExactly(
             this.b3propagator.Fields,
             new List<string> { B3Propagator.XB3TraceId, B3Propagator.XB3SpanId, B3Propagator.XB3ParentSpanId, B3Propagator.XB3Sampled, B3Propagator.XB3Flags });

@@ -17,14 +17,11 @@ You should see the following output:
 Hello World!
 ```
 
-Install the latest version of
-[Microsoft.Extensions.Logging](https://www.nuget.org/packages/Microsoft.Extensions.Logging/)
-package and
+Install the
 [OpenTelemetry.Exporter.Console](../../../src/OpenTelemetry.Exporter.Console/README.md)
 package:
 
 ```sh
-dotnet add package Microsoft.Extensions.Logging
 dotnet add package OpenTelemetry.Exporter.Console
 ```
 
@@ -91,7 +88,7 @@ has been used across the example, which delivers high performance, structured
 logging, and type-checked parameters:
 
 ```csharp
-public static partial class ApplicationLogs
+internal static partial class LoggerExtensions
 {
     [LoggerMessage(LogLevel.Information, "Food `{name}` price changed to `{price}`.")]
     public static partial void FoodPriceChanged(this ILogger logger, string name, double price);
@@ -100,7 +97,7 @@ public static partial class ApplicationLogs
 }
 ```
 
-> **Note**
+> [!NOTE]
 > For applications which use `ILogger` with [dependency injection
 (DI)](https://learn.microsoft.com/dotnet/core/extensions/dependency-injection)
 (e.g. [ASP.NET Core](https://learn.microsoft.com/aspnet/core) and [.NET
@@ -116,7 +113,7 @@ learn more.
 
 ## Learn more
 
-* [Compile-time logging source
-  generation](https://docs.microsoft.com/dotnet/core/extensions/logger-message-generator)
+* [Logging in C# and .NET](https://learn.microsoft.com/dotnet/core/extensions/logging)
+* [Logging with Complex Objects](../complex-objects/README.md)
 * [Customizing the OpenTelemetry .NET SDK](../customizing-the-sdk/README.md)
 * [Extending the OpenTelemetry .NET SDK](../extending-the-sdk/README.md)

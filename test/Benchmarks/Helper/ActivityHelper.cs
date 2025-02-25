@@ -1,18 +1,5 @@
-// <copyright file="ActivityHelper.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
 using System.Diagnostics;
 
@@ -44,14 +31,14 @@ internal static class ActivityHelper
             new ActivityEvent(
                 "Event1",
                 eventTimestamp,
-                new ActivityTagsCollection(new Dictionary<string, object>
+                new ActivityTagsCollection(new Dictionary<string, object?>
                 {
                     { "key", "value" },
                 })),
             new ActivityEvent(
                 "Event2",
                 eventTimestamp,
-                new ActivityTagsCollection(new Dictionary<string, object>
+                new ActivityTagsCollection(new Dictionary<string, object?>
                 {
                     { "key", "value" },
                 })),
@@ -61,7 +48,7 @@ internal static class ActivityHelper
 
         using var activitySource = new ActivitySource(nameof(CreateTestActivity));
 
-        var tags = attributes.Select(kvp => new KeyValuePair<string, object>(kvp.Key, kvp.Value.ToString()));
+        var tags = attributes.Select(kvp => new KeyValuePair<string, object?>(kvp.Key, kvp.Value.ToString()));
         var links = new[]
         {
             new ActivityLink(new ActivityContext(
@@ -88,10 +75,10 @@ internal static class ActivityHelper
 
         foreach (var evnt in events)
         {
-            activity.AddEvent(evnt);
+            activity!.AddEvent(evnt);
         }
 
-        activity.SetEndTime(endTimestamp);
+        activity!.SetEndTime(endTimestamp);
         activity.Stop();
 
         return activity;

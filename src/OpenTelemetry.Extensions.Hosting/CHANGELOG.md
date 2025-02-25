@@ -1,6 +1,110 @@
 # Changelog
 
+This file contains individual changes for the OpenTelemetry.Extensions.Hosting
+package. For highlights and announcements covering all components see: [Release
+Notes](../../RELEASENOTES.md).
+
 ## Unreleased
+
+## 1.11.1
+
+Released 2025-Jan-22
+
+## 1.11.0
+
+Released 2025-Jan-15
+
+## 1.11.0-rc.1
+
+Released 2024-Dec-11
+
+## 1.10.0
+
+Released 2024-Nov-12
+
+* Updated `Microsoft.Extensions.Hosting.Abstractions` package
+  version to `9.0.0`.
+  ([#5967](https://github.com/open-telemetry/opentelemetry-dotnet/pull/5967))
+
+## 1.10.0-rc.1
+
+Released 2024-Nov-01
+
+## 1.10.0-beta.1
+
+Released 2024-Sep-30
+
+* Updated `Microsoft.Extensions.Hosting.Abstractions` package
+  version to `9.0.0-rc.1.24431.7`.
+  ([#5853](https://github.com/open-telemetry/opentelemetry-dotnet/pull/5853))
+
+## 1.9.0
+
+Released 2024-Jun-14
+
+## 1.9.0-rc.1
+
+Released 2024-Jun-07
+
+* The experimental APIs previously covered by `OTEL1000`
+  (`OpenTelemetryBuilder.WithLogging` method) are now be part of the public API
+  and supported in stable builds.
+  ([#5648](https://github.com/open-telemetry/opentelemetry-dotnet/pull/5648))
+
+## 1.9.0-alpha.1
+
+Released 2024-May-20
+
+* Reverted obsoletion of `OpenTelemetryBuilder`.
+  ([#5571](https://github.com/open-telemetry/opentelemetry-dotnet/pull/5571))
+
+## 1.8.1
+
+Released 2024-Apr-17
+
+## 1.8.0
+
+Released 2024-Apr-02
+
+## 1.8.0-rc.1
+
+Released 2024-Mar-27
+
+## 1.8.0-beta.1
+
+Released 2024-Mar-14
+
+* `OpenTelemetryBuilder` has been marked obsolete. Component authors using
+  `OpenTelemetryBuilder` for cross-cutting signal configuration extensions
+  should switch to targeting `IOpenTelemetryBuilder` instead.
+  ([#5265](https://github.com/open-telemetry/opentelemetry-dotnet/pull/5265))
+
+## 1.7.0
+
+Released 2023-Dec-08
+
+## 1.7.0-rc.1
+
+Released 2023-Nov-29
+
+* Updated `Microsoft.Extensions.Hosting.Abstractions` package
+  version to `8.0.0`.
+  ([#5051](https://github.com/open-telemetry/opentelemetry-dotnet/pull/5051))
+
+* The `OpenTelemetryBuilder.WithMetrics` method will now register an
+  `IMetricsListener` named 'OpenTelemetry' into the `IServiceCollection` to
+  enable metric management via the new `Microsoft.Extensions.Diagnostics` .NET 8
+  APIs.
+  ([#4958](https://github.com/open-telemetry/opentelemetry-dotnet/pull/4958))
+
+* The `OpenTelemetryBuilder.WithLogging` experimental API method will now
+  register an `ILoggerProvider` named 'OpenTelemetry' into the
+  `IServiceCollection` to enable `ILoggerFactory` integration.
+  ([#5072](https://github.com/open-telemetry/opentelemetry-dotnet/pull/5072))
+
+## 1.7.0-alpha.1
+
+Released 2023-Oct-16
 
 * Changed the behavior of the `OpenTelemetryBuilder.AddOpenTelemetry` extension
   to INSERT OpenTelemetry services at the beginning of the `IServiceCollection`

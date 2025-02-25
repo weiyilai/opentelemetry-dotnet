@@ -1,18 +1,5 @@
-// <copyright file="TestLogs.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
 using Microsoft.Extensions.Logging;
 using OpenTelemetry;
@@ -22,7 +9,7 @@ namespace Examples.Console;
 
 internal class TestLogs
 {
-    internal static object Run(LogsOptions options)
+    internal static int Run(LogsOptions options)
     {
         using var loggerFactory = LoggerFactory.Create(builder =>
         {
@@ -30,7 +17,8 @@ internal class TestLogs
             {
                 opt.IncludeFormattedMessage = true;
                 opt.IncludeScopes = true;
-                if (options.UseExporter.Equals("otlp", StringComparison.OrdinalIgnoreCase))
+
+                if ("otlp".Equals(options.UseExporter, StringComparison.OrdinalIgnoreCase))
                 {
                     /*
                      * Prerequisite to run this example:
@@ -54,38 +42,48 @@ internal class TestLogs
                      *
                      */
 
-                    // Adding the OtlpExporter creates a GrpcChannel.
-                    // This switch must be set before creating a GrpcChannel when calling an insecure gRPC service.
-                    // See: https://docs.microsoft.com/aspnet/core/grpc/troubleshoot#call-insecure-grpc-services-with-net-core-client
-                    AppContext.SetSwitch("System.Net.Http.SocketsHttpHandler.Http2UnencryptedSupport", true);
-
                     var protocol = OpenTelemetry.Exporter.OtlpExportProtocol.Grpc;
 
-                    if (options.Protocol.Trim().ToLower().Equals("grpc"))
+                    if (!string.IsNullOrEmpty(options.Protocol))
                     {
-                        protocol = OpenTelemetry.Exporter.OtlpExportProtocol.Grpc;
-                    }
-                    else if (options.Protocol.Trim().ToLower().Equals("http/protobuf"))
-                    {
-                        protocol = OpenTelemetry.Exporter.OtlpExportProtocol.HttpProtobuf;
+                        switch (options.Protocol.Trim())
+                        {
+                            case "grpc":
+                                protocol = OpenTelemetry.Exporter.OtlpExportProtocol.Grpc;
+                                break;
+                            case "http/protobuf":
+                                protocol = OpenTelemetry.Exporter.OtlpExportProtocol.HttpProtobuf;
+                                break;
+                            default:
+                                System.Console.WriteLine($"Export protocol {options.Protocol} is not supported. Default protocol 'grpc' will be used.");
+                                break;
+                        }
                     }
                     else
                     {
-                        System.Console.WriteLine($"Export protocol {options.Protocol} is not supported. Default protocol 'grpc' will be used.");
+                        System.Console.WriteLine("Protocol is null or empty. Default protocol 'grpc' will be used.");
                     }
 
                     var processorType = ExportProcessorType.Batch;
-                    if (options.ProcessorType.Trim().ToLower().Equals("batch"))
+
+                    if (!string.IsNullOrEmpty(options.ProcessorType))
                     {
-                        processorType = ExportProcessorType.Batch;
-                    }
-                    else if (options.ProcessorType.Trim().ToLower().Equals("simple"))
-                    {
-                        processorType = ExportProcessorType.Simple;
+                        switch (options.ProcessorType.Trim())
+                        {
+                            case "batch":
+                                processorType = ExportProcessorType.Batch;
+                                break;
+                            case "simple":
+                                processorType = ExportProcessorType.Simple;
+                                break;
+                            default:
+                                System.Console.WriteLine($"Export processor type {options.ProcessorType} is not supported. Default processor type 'batch' will be used.");
+                                break;
+                        }
                     }
                     else
                     {
-                        System.Console.WriteLine($"Export processor type {options.ProcessorType} is not supported. Default processor type 'batch' will be used.");
+                        System.Console.WriteLine("Processor type is null or empty. Default processor type 'batch' will be used.");
                     }
 
                     opt.AddOtlpExporter((exporterOptions, processorOptions) =>
@@ -121,6 +119,6 @@ internal class TestLogs
             logger.LogInformation("Hello from {name} {price}.", "tomato", 2.99);
         }
 
-        return null;
+        return 0;
     }
 }

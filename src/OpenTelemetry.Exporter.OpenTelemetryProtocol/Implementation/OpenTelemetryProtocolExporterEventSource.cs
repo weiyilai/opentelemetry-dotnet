@@ -1,26 +1,14 @@
-// <copyright file="OpenTelemetryProtocolExporterEventSource.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
 using System.Diagnostics.Tracing;
+using Microsoft.Extensions.Configuration;
 using OpenTelemetry.Internal;
 
 namespace OpenTelemetry.Exporter.OpenTelemetryProtocol.Implementation;
 
 [EventSource(Name = "OpenTelemetry-Exporter-OpenTelemetryProtocol")]
-internal sealed class OpenTelemetryProtocolExporterEventSource : EventSource
+internal sealed class OpenTelemetryProtocolExporterEventSource : EventSource, IConfigurationExtensionsLogger
 {
     public static readonly OpenTelemetryProtocolExporterEventSource Log = new();
 
@@ -35,11 +23,74 @@ internal sealed class OpenTelemetryProtocolExporterEventSource : EventSource
     }
 
     [NonEvent]
-    public void ExportMethodException(Exception ex)
+    public void ExportMethodException(Exception ex, bool isRetry = false)
     {
         if (Log.IsEnabled(EventLevel.Error, EventKeywords.All))
         {
-            this.ExportMethodException(ex.ToInvariantString());
+            this.ExportMethodException(ex.ToInvariantString(), isRetry);
+        }
+    }
+
+    [NonEvent]
+    public void TrySubmitRequestException(Exception ex)
+    {
+        if (Log.IsEnabled(EventLevel.Error, EventKeywords.All))
+        {
+            this.TrySubmitRequestException(ex.ToInvariantString());
+        }
+    }
+
+    [NonEvent]
+    public void RetryStoredRequestException(Exception ex)
+    {
+        if (Log.IsEnabled(EventLevel.Error, EventKeywords.All))
+        {
+            this.RetryStoredRequestException(ex.ToInvariantString());
+        }
+    }
+
+    [NonEvent]
+    public void TransientHttpError(Uri endpoint, Exception ex)
+    {
+        if (Log.IsEnabled(EventLevel.Warning, EventKeywords.All))
+        {
+            this.TransientHttpError(endpoint.ToString(), ex.ToInvariantString());
+        }
+    }
+
+    [NonEvent]
+    public void HttpRequestFailed(Uri endpoint, Exception ex)
+    {
+        if (Log.IsEnabled(EventLevel.Error, EventKeywords.All))
+        {
+            this.HttpRequestFailed(endpoint.ToString(), ex.ToInvariantString());
+        }
+    }
+
+    [NonEvent]
+    public void OperationUnexpectedlyCanceled(Uri endpoint, Exception ex)
+    {
+        if (Log.IsEnabled(EventLevel.Warning, EventKeywords.All))
+        {
+            this.OperationUnexpectedlyCanceled(endpoint.ToString(), ex.ToInvariantString());
+        }
+    }
+
+    [NonEvent]
+    public void RequestTimedOut(Uri endpoint, Exception ex)
+    {
+        if (Log.IsEnabled(EventLevel.Warning, EventKeywords.All))
+        {
+            this.RequestTimedOut(endpoint.ToString(), ex.ToInvariantString());
+        }
+    }
+
+    [NonEvent]
+    public void GrpcRetryDelayParsingFailed(string? grpcStatusDetailsHeader, Exception ex)
+    {
+        if (Log.IsEnabled(EventLevel.Warning, EventKeywords.All))
+        {
+            this.GrpcRetryDelayParsingFailed(grpcStatusDetailsHeader ?? "null", ex.ToInvariantString());
         }
     }
 
@@ -55,10 +106,10 @@ internal sealed class OpenTelemetryProtocolExporterEventSource : EventSource
         this.WriteEvent(3, className, methodName);
     }
 
-    [Event(4, Message = "Unknown error in export method: {0}", Level = EventLevel.Error)]
-    public void ExportMethodException(string ex)
+    [Event(4, Message = "Unknown error in export method. Message: '{0}'. IsRetry: {1}", Level = EventLevel.Error)]
+    public void ExportMethodException(string ex, bool isRetry)
     {
-        this.WriteEvent(4, ex);
+        this.WriteEvent(4, ex, isRetry);
     }
 
     [Event(5, Message = "Could not translate metric from class '{0}' and method '{1}', metric will not be recorded.", Level = EventLevel.Informational)]
@@ -85,9 +136,98 @@ internal sealed class OpenTelemetryProtocolExporterEventSource : EventSource
         this.WriteEvent(10, type.ToString(), key);
     }
 
-    [Event(11, Message = "{0} environment variable has an invalid value: '{1}'", Level = EventLevel.Warning)]
-    public void InvalidEnvironmentVariable(string key, string value)
+    [Event(11, Message = "Configuration key '{0}' has an invalid value: '{1}'", Level = EventLevel.Warning)]
+    public void InvalidConfigurationValue(string key, string value)
     {
         this.WriteEvent(11, key, value);
+    }
+
+    [Event(12, Message = "Unknown error in TrySubmitRequest method. Message: '{0}'", Level = EventLevel.Error)]
+    public void TrySubmitRequestException(string ex)
+    {
+        this.WriteEvent(12, ex);
+    }
+
+    [Event(13, Message = "Error while attempting to re-transmit data from disk. Message: '{0}'", Level = EventLevel.Error)]
+    public void RetryStoredRequestException(string ex)
+    {
+        this.WriteEvent(13, ex);
+    }
+
+    [Event(14, Message = "{0} buffer exceeded the maximum allowed size. Current size: {1} bytes.", Level = EventLevel.Error)]
+    public void BufferExceededMaxSize(string signalType, int length)
+    {
+        this.WriteEvent(14, signalType, length);
+    }
+
+    [Event(15, Message = "{0} buffer resizing failed due to insufficient memory.", Level = EventLevel.Error)]
+    public void BufferResizeFailedDueToMemory(string signalType)
+    {
+        this.WriteEvent(15, signalType);
+    }
+
+    [Event(16, Message = "Transient HTTP error occurred when communicating with {0}. Exception: {1}", Level = EventLevel.Warning)]
+    public void TransientHttpError(string endpoint, string exceptionMessage)
+    {
+        this.WriteEvent(16, endpoint, exceptionMessage);
+    }
+
+    [Event(17, Message = "HTTP request to {0} failed. Exception: {1}", Level = EventLevel.Error)]
+    public void HttpRequestFailed(string endpoint, string exceptionMessage)
+    {
+        this.WriteEvent(17, endpoint, exceptionMessage);
+    }
+
+    [Event(18, Message = "Operation unexpectedly canceled for endpoint {0}. Exception: {1}", Level = EventLevel.Warning)]
+    public void OperationUnexpectedlyCanceled(string endpoint, string exceptionMessage)
+    {
+        this.WriteEvent(18, endpoint, exceptionMessage);
+    }
+
+    [Event(19, Message = "Request to endpoint {0} timed out. Exception: {1}", Level = EventLevel.Warning)]
+    public void RequestTimedOut(string endpoint, string exceptionMessage)
+    {
+        this.WriteEvent(19, endpoint, exceptionMessage);
+    }
+
+    [Event(20, Message = "Failed to deserialize response from {0}.", Level = EventLevel.Error)]
+    public void ResponseDeserializationFailed(string endpoint)
+    {
+        this.WriteEvent(20, endpoint);
+    }
+
+    [Event(21, Message = "Export succeeded for {0}. Message: {1}", Level = EventLevel.Informational)]
+    public void ExportSuccess(string endpoint, string message)
+    {
+        this.WriteEvent(21, endpoint, message);
+    }
+
+    [Event(22, Message = "Export encountered GRPC status warning for {0}. Status code: {1}", Level = EventLevel.Warning)]
+    public void GrpcStatusWarning(string endpoint, string statusCode)
+    {
+        this.WriteEvent(22, endpoint, statusCode);
+    }
+
+    [Event(23, Message = "Export failed for {0}. Message: {1}", Level = EventLevel.Error)]
+    public void ExportFailure(string endpoint, string message)
+    {
+        this.WriteEvent(23, endpoint, message);
+    }
+
+    [Event(24, Message = "Failed to parse gRPC retry delay from header grpcStatusDetailsHeader: '{0}'. Exception: {1}", Level = EventLevel.Warning)]
+    public void GrpcRetryDelayParsingFailed(string grpcStatusDetailsHeader, string exception)
+    {
+        this.WriteEvent(24, grpcStatusDetailsHeader, exception);
+    }
+
+    [Event(25, Message = "The array tag buffer exceeded the maximum allowed size. The array tag value was replaced with 'TRUNCATED'", Level = EventLevel.Warning)]
+    public void ArrayBufferExceededMaxSize()
+    {
+        this.WriteEvent(25);
+    }
+
+    void IConfigurationExtensionsLogger.LogInvalidConfigurationValue(string key, string value)
+    {
+        this.InvalidConfigurationValue(key, value);
     }
 }

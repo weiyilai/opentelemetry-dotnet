@@ -1,18 +1,5 @@
-// <copyright file="MetricViewTests.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
 using System.Diagnostics.Metrics;
 using OpenTelemetry.Internal;
@@ -30,11 +17,11 @@ public class MetricViewTests : MetricTestsBase
     {
         using var meter = new Meter(Utils.GetCurrentMethodName());
         var exportedItems = new List<Metric>();
-        using var meterProvider = Sdk.CreateMeterProviderBuilder()
+
+        using var container = this.BuildMeterProvider(out var meterProvider, builder => builder
             .AddMeter(meter.Name)
             .AddView("name1", "renamed")
-            .AddInMemoryExporter(exportedItems)
-            .Build();
+            .AddInMemoryExporter(exportedItems));
 
         // Expecting one metric stream.
         var counterLong = meter.CreateCounter<long>("name1");
@@ -53,35 +40,32 @@ public class MetricViewTests : MetricTestsBase
 
         using var meter1 = new Meter("AddViewWithInvalidNameThrowsArgumentException");
 
-        var ex = Assert.Throws<ArgumentException>(() => Sdk.CreateMeterProviderBuilder()
+        var ex = Assert.Throws<ArgumentException>(() => this.BuildMeterProvider(out var meterProvider, builder => builder
             .AddMeter(meter1.Name)
             .AddView("name1", viewNewName)
-            .AddInMemoryExporter(exportedItems)
-            .Build());
+            .AddInMemoryExporter(exportedItems)));
 
         Assert.Contains($"Custom view name {viewNewName} is invalid.", ex.Message);
 
-        ex = Assert.Throws<ArgumentException>(() => Sdk.CreateMeterProviderBuilder()
+        ex = Assert.Throws<ArgumentException>(() => this.BuildMeterProvider(out var meterProvider, builder => builder
             .AddMeter(meter1.Name)
             .AddView("name1", new MetricStreamConfiguration() { Name = viewNewName })
-            .AddInMemoryExporter(exportedItems)
-            .Build());
+            .AddInMemoryExporter(exportedItems)));
 
         Assert.Contains($"Custom view name {viewNewName} is invalid.", ex.Message);
     }
 
     [Fact]
-    public void AddViewWithNullMetricStreamConfigurationThrowsArgumentnullException()
+    public void AddViewWithNullMetricStreamConfigurationThrowsArgumentNullException()
     {
         var exportedItems = new List<Metric>();
 
         using var meter1 = new Meter("AddViewWithInvalidNameThrowsArgumentException");
 
-        Assert.Throws<ArgumentNullException>(() => Sdk.CreateMeterProviderBuilder()
+        Assert.Throws<ArgumentNullException>(() => this.BuildMeterProvider(out var meterProvider, builder => builder
            .AddMeter(meter1.Name)
-           .AddView("name1", (MetricStreamConfiguration)null)
-           .AddInMemoryExporter(exportedItems)
-           .Build());
+           .AddView("name1", (MetricStreamConfiguration)null!)
+           .AddInMemoryExporter(exportedItems)));
     }
 
     [Fact]
@@ -91,11 +75,10 @@ public class MetricViewTests : MetricTestsBase
 
         using var meter1 = new Meter("AddViewWithGuaranteedConflictThrowsInvalidArgumentException");
 
-        Assert.Throws<ArgumentException>(() => Sdk.CreateMeterProviderBuilder()
+        Assert.Throws<ArgumentException>(() => this.BuildMeterProvider(out var meterProvider, builder => builder
            .AddMeter(meter1.Name)
            .AddView("instrumenta.*", name: "newname")
-           .AddInMemoryExporter(exportedItems)
-           .Build());
+           .AddInMemoryExporter(exportedItems)));
     }
 
     [Fact]
@@ -105,11 +88,10 @@ public class MetricViewTests : MetricTestsBase
 
         using var meter1 = new Meter("AddViewWithGuaranteedConflictThrowsInvalidArgumentException");
 
-        Assert.Throws<ArgumentException>(() => Sdk.CreateMeterProviderBuilder()
+        Assert.Throws<ArgumentException>(() => this.BuildMeterProvider(out var meterProvider, builder => builder
            .AddMeter(meter1.Name)
            .AddView("instrumenta.*", new MetricStreamConfiguration() { Name = "newname" })
-           .AddInMemoryExporter(exportedItems)
-           .Build());
+           .AddInMemoryExporter(exportedItems)));
     }
 
     [Fact]
@@ -118,17 +100,18 @@ public class MetricViewTests : MetricTestsBase
         var exportedItems = new List<Metric>();
 
         using var meter1 = new Meter("AddViewWithExceptionInUserCallback");
-        using var meterProvider = Sdk.CreateMeterProviderBuilder()
+        using var container = this.BuildMeterProvider(out var meterProvider, builder => builder
            .AddMeter(meter1.Name)
            .AddView((instrument) => { throw new Exception("bad"); })
-           .AddInMemoryExporter(exportedItems)
-           .Build();
+           .AddInMemoryExporter(exportedItems));
 
         using (var inMemoryEventListener = new InMemoryEventListener(OpenTelemetrySdkEventSource.Log))
         {
             var counter1 = meter1.CreateCounter<long>("counter1");
             counter1.Add(1);
-            Assert.Single(inMemoryEventListener.Events.Where((e) => e.EventId == 41));
+
+            var metricViewIgnoredEvents = inMemoryEventListener.Events.Where((e) => e.EventId == 41);
+            Assert.Single(metricViewIgnoredEvents);
         }
 
         meterProvider.ForceFlush(MaxTimeToAllowForFlush);
@@ -144,12 +127,11 @@ public class MetricViewTests : MetricTestsBase
         var exportedItems = new List<Metric>();
 
         using var meter1 = new Meter("AddViewWithExceptionInUserCallback");
-        using var meterProvider = Sdk.CreateMeterProviderBuilder()
+        using var container = this.BuildMeterProvider(out var meterProvider, builder => builder
            .AddMeter(meter1.Name)
            .AddView((instrument) => { throw new Exception("bad"); })
            .AddView("*", MetricStreamConfiguration.Drop)
-           .AddInMemoryExporter(exportedItems)
-           .Build();
+           .AddInMemoryExporter(exportedItems));
 
         using (var inMemoryEventListener = new InMemoryEventListener(OpenTelemetrySdkEventSource.Log))
         {
@@ -172,18 +154,19 @@ public class MetricViewTests : MetricTestsBase
         var exportedItems = new List<Metric>();
 
         using var meter1 = new Meter("AddViewWithExceptionInUserCallback");
-        using var meterProvider = Sdk.CreateMeterProviderBuilder()
+        using var container = this.BuildMeterProvider(out var meterProvider, builder => builder
            .AddMeter(meter1.Name)
            .AddView((instrument) => { throw new Exception("bad"); })
            .AddView((instrument) => { return new MetricStreamConfiguration() { Name = "newname" }; })
-           .AddInMemoryExporter(exportedItems)
-           .Build();
+           .AddInMemoryExporter(exportedItems));
 
         using (var inMemoryEventListener = new InMemoryEventListener(OpenTelemetrySdkEventSource.Log))
         {
             var counter1 = meter1.CreateCounter<long>("counter1");
             counter1.Add(1);
-            Assert.Single(inMemoryEventListener.Events.Where((e) => e.EventId == 41));
+
+            var metricViewIgnoredEvents = inMemoryEventListener.Events.Where((e) => e.EventId == 41);
+            Assert.Single(metricViewIgnoredEvents);
         }
 
         meterProvider.ForceFlush(MaxTimeToAllowForFlush);
@@ -198,8 +181,8 @@ public class MetricViewTests : MetricTestsBase
     [MemberData(nameof(MetricTestData.InvalidHistogramBoundaries), MemberType = typeof(MetricTestData))]
     public void AddViewWithInvalidHistogramBoundsThrowsArgumentException(double[] boundaries)
     {
-        var ex = Assert.Throws<ArgumentException>(() => Sdk.CreateMeterProviderBuilder()
-            .AddView("name1", new ExplicitBucketHistogramConfiguration { Boundaries = boundaries }));
+        var ex = Assert.Throws<ArgumentException>(() => this.BuildMeterProvider(out var meterProvider, builder => builder
+            .AddView("name1", new ExplicitBucketHistogramConfiguration { Boundaries = boundaries })));
 
         Assert.Contains("Histogram boundaries must be in ascending order with distinct values", ex.Message);
     }
@@ -210,8 +193,8 @@ public class MetricViewTests : MetricTestsBase
     [InlineData(1)]
     public void AddViewWithInvalidExponentialHistogramMaxSizeConfigThrowsArgumentException(int maxSize)
     {
-        var ex = Assert.Throws<ArgumentException>(() => Sdk.CreateMeterProviderBuilder()
-            .AddView("name1", new Base2ExponentialBucketHistogramConfiguration { MaxSize = maxSize }));
+        var ex = Assert.Throws<ArgumentException>(() => this.BuildMeterProvider(out var meterProvider, builder => builder
+            .AddView("name1", new Base2ExponentialBucketHistogramConfiguration { MaxSize = maxSize })));
 
         Assert.Contains("Histogram max size is invalid", ex.Message);
     }
@@ -221,8 +204,8 @@ public class MetricViewTests : MetricTestsBase
     [InlineData(21)]
     public void AddViewWithInvalidExponentialHistogramMaxScaleConfigThrowsArgumentException(int maxScale)
     {
-        var ex = Assert.Throws<ArgumentException>(() => Sdk.CreateMeterProviderBuilder()
-            .AddView("name1", new Base2ExponentialBucketHistogramConfiguration { MaxScale = maxScale }));
+        var ex = Assert.Throws<ArgumentException>(() => this.BuildMeterProvider(out var meterProvider, builder => builder
+            .AddView("name1", new Base2ExponentialBucketHistogramConfiguration { MaxScale = maxScale })));
 
         Assert.Contains("Histogram max scale is invalid", ex.Message);
     }
@@ -237,7 +220,7 @@ public class MetricViewTests : MetricTestsBase
 
         var counter1 = meter1.CreateCounter<long>("counter1");
 
-        using (var provider = Sdk.CreateMeterProviderBuilder()
+        using (var container = this.BuildMeterProvider(out var meterProvider, builder => builder
             .AddMeter(meter1.Name)
             .AddView((instrument) =>
             {
@@ -245,8 +228,7 @@ public class MetricViewTests : MetricTestsBase
                     ? new ExplicitBucketHistogramConfiguration() { Boundaries = boundaries }
                     : null;
             })
-            .AddInMemoryExporter(exportedItems)
-            .Build())
+            .AddInMemoryExporter(exportedItems)))
         {
             counter1.Add(1);
         }
@@ -263,11 +245,10 @@ public class MetricViewTests : MetricTestsBase
         var exportedItems = new List<Metric>();
 
         using var meter1 = new Meter("ViewWithInvalidNameIgnoredTest");
-        using var meterProvider = Sdk.CreateMeterProviderBuilder()
+        using var container = this.BuildMeterProvider(out var meterProvider, builder => builder
             .AddMeter(meter1.Name)
             .AddView("name1", viewNewName)
-            .AddInMemoryExporter(exportedItems)
-            .Build();
+            .AddInMemoryExporter(exportedItems));
 
         var counterLong = meter1.CreateCounter<long>("name1");
         counterLong.Add(10);
@@ -287,7 +268,7 @@ public class MetricViewTests : MetricTestsBase
 
         var exportedItems = new List<Metric>();
 
-        using var meterProvider = Sdk.CreateMeterProviderBuilder()
+        using var container = this.BuildMeterProvider(out var meterProvider, builder => builder
             .AddMeter(meter1.Name)
             .AddMeter(meter2.Name)
             .AddView((instrument) =>
@@ -302,8 +283,7 @@ public class MetricViewTests : MetricTestsBase
                     return null;
                 }
             })
-            .AddInMemoryExporter(exportedItems)
-            .Build();
+            .AddInMemoryExporter(exportedItems));
 
         // Without views only 1 stream would be
         // exported (the 2nd one gets dropped due to
@@ -327,7 +307,7 @@ public class MetricViewTests : MetricTestsBase
     {
         using var meter1 = new Meter("ViewToRenameMetricConditionallyTest");
         var exportedItems = new List<Metric>();
-        using var meterProvider = Sdk.CreateMeterProviderBuilder()
+        using var container = this.BuildMeterProvider(out var meterProvider, builder => builder
             .AddMeter(meter1.Name)
 
             // since here it's a func, we can't validate the name right away
@@ -345,8 +325,7 @@ public class MetricViewTests : MetricTestsBase
                     return null;
                 }
             })
-            .AddInMemoryExporter(exportedItems)
-            .Build();
+            .AddInMemoryExporter(exportedItems));
 
         // Because the MetricStreamName passed is invalid, the view is ignored,
         // and default aggregation is used.
@@ -364,7 +343,7 @@ public class MetricViewTests : MetricTestsBase
     {
         using var meter1 = new Meter("ViewToRenameMetricConditionallyTest");
         var exportedItems = new List<Metric>();
-        using var meterProvider = Sdk.CreateMeterProviderBuilder()
+        using var container = this.BuildMeterProvider(out var meterProvider, builder => builder
             .AddMeter(meter1.Name)
             .AddView((instrument) =>
             {
@@ -379,8 +358,7 @@ public class MetricViewTests : MetricTestsBase
                     return null;
                 }
             })
-            .AddInMemoryExporter(exportedItems)
-            .Build();
+            .AddInMemoryExporter(exportedItems));
 
         // Expecting one metric stream.
         var counter1 = meter1.CreateCounter<long>("name1", "unit", "original_description");
@@ -401,7 +379,7 @@ public class MetricViewTests : MetricTestsBase
 
         using var meter = new Meter("ViewToRenameMetricConditionallyTest");
 
-        using var meterProvider = Sdk.CreateMeterProviderBuilder()
+        using var container = this.BuildMeterProvider(out var meterProvider, builder => builder
             .AddMeter(meter.Name)
             .AddView((instrument) =>
             {
@@ -415,8 +393,7 @@ public class MetricViewTests : MetricTestsBase
                     return null;
                 }
             })
-            .AddInMemoryExporter(exportedItems)
-            .Build();
+            .AddInMemoryExporter(exportedItems));
 
         // Expecting one metric stream.
         // Since the View name was null, the instrument name was used instead
@@ -436,12 +413,12 @@ public class MetricViewTests : MetricTestsBase
     {
         using var meter = new Meter(Utils.GetCurrentMethodName());
         var exportedItems = new List<Metric>();
-        using var meterProvider = Sdk.CreateMeterProviderBuilder()
+
+        using var container = this.BuildMeterProvider(out var meterProvider, builder => builder
             .AddMeter(meter.Name)
             .AddView("name1", "renamedStream1")
             .AddView("name1", "renamedStream2")
-            .AddInMemoryExporter(exportedItems)
-            .Build();
+            .AddInMemoryExporter(exportedItems));
 
         // Expecting two metric stream.
         var counterLong = meter.CreateCounter<long>("name1");
@@ -457,13 +434,13 @@ public class MetricViewTests : MetricTestsBase
     {
         using var meter = new Meter(Utils.GetCurrentMethodName());
         var exportedItems = new List<Metric>();
-        using var meterProvider = Sdk.CreateMeterProviderBuilder()
+
+        using var container = this.BuildMeterProvider(out var meterProvider, builder => builder
             .AddMeter(meter.Name)
             .AddView("name1", "renamedStream1")
             .AddView("name1", "renamedStream2")
             .AddView("name1", "renamedStream2")
-            .AddInMemoryExporter(exportedItems)
-            .Build();
+            .AddInMemoryExporter(exportedItems));
 
         // Expecting three metric stream.
         // the second .AddView("name1", "renamedStream2")
@@ -482,12 +459,12 @@ public class MetricViewTests : MetricTestsBase
     {
         using var meter = new Meter(Utils.GetCurrentMethodName());
         var exportedItems = new List<Metric>();
-        using var meterProvider = Sdk.CreateMeterProviderBuilder()
+
+        using var container = this.BuildMeterProvider(out var meterProvider, builder => builder
             .AddMeter(meter.Name)
             .AddView("NotAHistogram", new ExplicitBucketHistogramConfiguration() { Name = "ImAnExplicitBoundsHistogram" })
             .AddView("NotAHistogram", new Base2ExponentialBucketHistogramConfiguration() { Name = "ImAnExponentialHistogram" })
-            .AddInMemoryExporter(exportedItems)
-            .Build();
+            .AddInMemoryExporter(exportedItems));
 
         var counter = meter.CreateCounter<long>("NotAHistogram");
         counter.Add(10);
@@ -515,12 +492,12 @@ public class MetricViewTests : MetricTestsBase
         using var meter = new Meter(Utils.GetCurrentMethodName());
         var exportedItems = new List<Metric>();
         var boundaries = new double[] { 10, 20 };
-        using var meterProvider = Sdk.CreateMeterProviderBuilder()
+
+        using var container = this.BuildMeterProvider(out var meterProvider, builder => builder
             .AddMeter(meter.Name)
             .AddView("MyHistogram", new ExplicitBucketHistogramConfiguration() { Name = "MyHistogramDefaultBound" })
             .AddView("MyHistogram", new ExplicitBucketHistogramConfiguration() { Boundaries = boundaries })
-            .AddInMemoryExporter(exportedItems)
-            .Build();
+            .AddInMemoryExporter(exportedItems));
 
         var histogram = meter.CreateHistogram<long>("MyHistogram");
         histogram.Record(-10);
@@ -594,17 +571,188 @@ public class MetricViewTests : MetricTestsBase
     }
 
     [Fact]
+    public void HistogramWithAdviceBoundaries_HandlesAllTypes()
+    {
+        using var meter = new Meter(Utils.GetCurrentMethodName());
+        var exportedItems = new List<Metric>();
+        int counter = 0;
+
+        using var container = this.BuildMeterProvider(out var meterProvider, builder =>
+        {
+            builder.AddMeter(meter.Name);
+            builder.AddInMemoryExporter(exportedItems);
+        });
+
+        // Test cases for different histogram types
+        var histograms = new Instrument[]
+        {
+            meter.CreateHistogram<long>("longHistogram", unit: null, description: null, tags: null, new() { HistogramBucketBoundaries = new List<long>() { 10, 20 } }),
+            meter.CreateHistogram<int>("intHistogram", unit: null, description: null, tags: null, new() { HistogramBucketBoundaries = new List<int>() { 10, 20 } }),
+            meter.CreateHistogram<short>("shortHistogram", unit: null, description: null, tags: null, new() { HistogramBucketBoundaries = new List<short>() { 10, 20 } }),
+            meter.CreateHistogram<float>("floatHistogram", unit: null, description: null, tags: null, new() { HistogramBucketBoundaries = new List<float>() { 10.0F, 20.0F } }),
+            meter.CreateHistogram<double>("doubleHistogram", unit: null, description: null, tags: null, new() { HistogramBucketBoundaries = new List<double>() { 10.0, 20.0 } }),
+        };
+
+        foreach (var histogram in histograms)
+        {
+            exportedItems.Clear();
+
+            if (histogram is Histogram<long> longHistogram)
+            {
+                longHistogram.Record(-10);
+                longHistogram.Record(9);
+                longHistogram.Record(19);
+            }
+            else if (histogram is Histogram<int> intHistogram)
+            {
+                intHistogram.Record(-10);
+                intHistogram.Record(9);
+                intHistogram.Record(19);
+                counter++;
+            }
+            else if (histogram is Histogram<short> shortHistogram)
+            {
+                shortHistogram.Record(-10);
+                shortHistogram.Record(9);
+                shortHistogram.Record(19);
+                counter++;
+            }
+            else if (histogram is Histogram<float> floatHistogram)
+            {
+                floatHistogram.Record(-10.0F);
+                floatHistogram.Record(9.0F);
+                floatHistogram.Record(19.0F);
+                counter++;
+            }
+            else if (histogram is Histogram<double> doubleHistogram)
+            {
+                doubleHistogram.Record(-10.0);
+                doubleHistogram.Record(9.0);
+                doubleHistogram.Record(19.0);
+                counter++;
+            }
+
+            meterProvider.ForceFlush(MaxTimeToAllowForFlush);
+            var metricCustom = exportedItems[counter];
+
+            List<MetricPoint> metricPointsCustom = new List<MetricPoint>();
+            foreach (ref readonly var mp in metricCustom.GetMetricPoints())
+            {
+                metricPointsCustom.Add(mp);
+            }
+
+            Assert.Single(metricPointsCustom);
+            var histogramPoint = metricPointsCustom[0];
+
+            var count = histogramPoint.GetHistogramCount();
+            var sum = histogramPoint.GetHistogramSum();
+
+            Assert.Equal(18, sum);
+            Assert.Equal(3, count);
+
+            var index = 0;
+            var actualCount = 0;
+            long[] expectedBucketCounts = new long[] { 2, 1, 0 };
+
+            foreach (var histogramMeasurement in histogramPoint.GetHistogramBuckets())
+            {
+                Assert.Equal(expectedBucketCounts[index], histogramMeasurement.BucketCount);
+                index++;
+                actualCount++;
+            }
+
+            Assert.Equal(3, actualCount);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void HistogramWithAdviceBoundariesSpecifiedTests(bool useViewToOverride)
+    {
+        using var meter = new Meter(Utils.GetCurrentMethodName());
+        var exportedItems = new List<Metric>();
+        IReadOnlyList<long> adviceBoundaries = new List<long>() { 5, 10, 20 };
+        double[] viewBoundaries = new double[] { 10, 20 };
+
+        using var container = this.BuildMeterProvider(out var meterProvider, builder =>
+        {
+            builder.AddMeter(meter.Name);
+
+            if (useViewToOverride)
+            {
+                builder.AddView("MyHistogram", new ExplicitBucketHistogramConfiguration { Boundaries = viewBoundaries });
+            }
+
+            builder.AddInMemoryExporter(exportedItems);
+        });
+
+        var histogram = meter.CreateHistogram<long>(
+            "MyHistogram",
+            unit: null,
+            description: null,
+            tags: null,
+            new()
+            {
+                HistogramBucketBoundaries = adviceBoundaries,
+            });
+
+        histogram.Record(-10);
+        histogram.Record(0);
+        histogram.Record(1);
+        histogram.Record(9);
+        histogram.Record(10);
+        histogram.Record(11);
+        histogram.Record(19);
+        histogram.Record(22);
+
+        meterProvider.ForceFlush(MaxTimeToAllowForFlush);
+        Assert.Single(exportedItems);
+        var metricCustom = exportedItems[0];
+
+        Assert.Equal("MyHistogram", metricCustom.Name);
+
+        List<MetricPoint> metricPointsCustom = new List<MetricPoint>();
+        foreach (ref readonly var mp in metricCustom.GetMetricPoints())
+        {
+            metricPointsCustom.Add(mp);
+        }
+
+        Assert.Single(metricPointsCustom);
+        var histogramPoint = metricPointsCustom[0];
+
+        var count = histogramPoint.GetHistogramCount();
+        var sum = histogramPoint.GetHistogramSum();
+
+        Assert.Equal(62, sum);
+        Assert.Equal(8, count);
+
+        var index = 0;
+        var actualCount = 0;
+        long[] expectedBucketCounts = useViewToOverride ? new long[] { 5, 2, 1 } : new long[] { 3, 2, 2, 1 };
+
+        foreach (var histogramMeasurement in histogramPoint.GetHistogramBuckets())
+        {
+            Assert.Equal(expectedBucketCounts[index], histogramMeasurement.BucketCount);
+            index++;
+            actualCount++;
+        }
+
+        Assert.Equal(useViewToOverride ? viewBoundaries.Length + 1 : adviceBoundaries.Count + 1, actualCount);
+    }
+
+    [Fact]
     public void ViewToProduceExponentialHistogram()
     {
         var valuesToRecord = new[] { -10, 0, 1, 9, 10, 11, 19 };
 
         using var meter = new Meter(Utils.GetCurrentMethodName());
         var exportedItems = new List<Metric>();
-        using var meterProvider = Sdk.CreateMeterProviderBuilder()
+
+        using var container = this.BuildMeterProvider(out var meterProvider, builder => builder
             .AddMeter(meter.Name)
             .AddView("MyHistogram", new Base2ExponentialBucketHistogramConfiguration())
-            .AddInMemoryExporter(exportedItems)
-            .Build();
+            .AddInMemoryExporter(exportedItems));
 
         var histogram = meter.CreateHistogram<long>("MyHistogram");
         var expectedHistogram = new Base2ExponentialBucketHistogram();
@@ -636,7 +784,7 @@ public class MetricViewTests : MetricTestsBase
         var count = metricPoint.GetHistogramCount();
         var sum = metricPoint.GetHistogramSum();
 
-        AggregatorTestsBase.AssertExponentialBucketsAreCorrect(expectedHistogram, metricPoint.GetExponentialHistogramData());
+        AggregatorTests.AssertExponentialBucketsAreCorrect(expectedHistogram, metricPoint.GetExponentialHistogramData());
         Assert.Equal(50, sum);
         Assert.Equal(6, count);
     }
@@ -648,11 +796,11 @@ public class MetricViewTests : MetricTestsBase
         using var meter = new Meter(Utils.GetCurrentMethodName());
         var histogram = meter.CreateHistogram<double>("MyHistogram");
         var exportedItems = new List<Metric>();
-        using var meterProvider = Sdk.CreateMeterProviderBuilder()
+
+        using var container = this.BuildMeterProvider(out var meterProvider, builder => builder
             .AddMeter(meter.Name)
             .AddView(histogram.Name, histogramConfiguration)
-            .AddInMemoryExporter(exportedItems)
-            .Build();
+            .AddInMemoryExporter(exportedItems));
 
         for (var i = 0; i < values.Length; i++)
         {
@@ -686,11 +834,11 @@ public class MetricViewTests : MetricTestsBase
         using var meter = new Meter(Utils.GetCurrentMethodName());
         var histogram = meter.CreateHistogram<double>("MyHistogram");
         var exportedItems = new List<Metric>();
-        using var meterProvider = Sdk.CreateMeterProviderBuilder()
+
+        using var container = this.BuildMeterProvider(out var meterProvider, builder => builder
             .AddMeter(meter.Name)
             .AddView(histogram.Name, histogramConfiguration)
-            .AddInMemoryExporter(exportedItems)
-            .Build();
+            .AddInMemoryExporter(exportedItems));
 
         for (var i = 0; i < values.Length; i++)
         {
@@ -714,7 +862,8 @@ public class MetricViewTests : MetricTestsBase
     {
         using var meter = new Meter(Utils.GetCurrentMethodName());
         var exportedItems = new List<Metric>();
-        using var meterProvider = Sdk.CreateMeterProviderBuilder()
+
+        using var container = this.BuildMeterProvider(out var meterProvider, builder => builder
             .AddMeter(meter.Name)
             .AddView("FruitCounter", new MetricStreamConfiguration()
             {
@@ -731,8 +880,7 @@ public class MetricViewTests : MetricTestsBase
                 TagKeys = Array.Empty<string>(),
                 Name = "NoTags",
             })
-            .AddInMemoryExporter(exportedItems)
-            .Build();
+            .AddInMemoryExporter(exportedItems));
 
         var counter = meter.CreateCounter<long>("FruitCounter");
         counter.Add(10, new("name", "apple"), new("color", "red"), new("size", "small"));
@@ -785,11 +933,11 @@ public class MetricViewTests : MetricTestsBase
     {
         using var meter = new Meter(Utils.GetCurrentMethodName());
         var exportedItems = new List<Metric>();
-        using var meterProvider = Sdk.CreateMeterProviderBuilder()
+
+        using var container = this.BuildMeterProvider(out var meterProvider, builder => builder
             .AddMeter(meter.Name)
             .AddView("counterNotInteresting", MetricStreamConfiguration.Drop)
-            .AddInMemoryExporter(exportedItems)
-            .Build();
+            .AddInMemoryExporter(exportedItems));
 
         // Expecting one metric stream.
         var counterInteresting = meter.CreateCounter<long>("counterInteresting");
@@ -808,11 +956,11 @@ public class MetricViewTests : MetricTestsBase
     {
         using var meter = new Meter(Utils.GetCurrentMethodName());
         var exportedItems = new List<Metric>();
-        using var meterProvider = Sdk.CreateMeterProviderBuilder()
+
+        using var container = this.BuildMeterProvider(out var meterProvider, builder => builder
             .AddMeter(meter.Name)
             .AddView("observableCounterNotInteresting", MetricStreamConfiguration.Drop)
-            .AddInMemoryExporter(exportedItems)
-            .Build();
+            .AddInMemoryExporter(exportedItems));
 
         // Expecting one metric stream.
         meter.CreateObservableCounter("observableCounterNotInteresting", () => { return 10; }, "ms");
@@ -829,11 +977,11 @@ public class MetricViewTests : MetricTestsBase
     {
         using var meter = new Meter(Utils.GetCurrentMethodName());
         var exportedItems = new List<Metric>();
-        using var meterProvider = Sdk.CreateMeterProviderBuilder()
+
+        using var container = this.BuildMeterProvider(out var meterProvider, builder => builder
             .AddMeter(meter.Name)
             .AddView("observableGaugeNotInteresting", MetricStreamConfiguration.Drop)
-            .AddInMemoryExporter(exportedItems)
-            .Build();
+            .AddInMemoryExporter(exportedItems));
 
         // Expecting one metric stream.
         meter.CreateObservableGauge("observableGaugeNotInteresting", () => { return 10; }, "ms");
@@ -850,11 +998,11 @@ public class MetricViewTests : MetricTestsBase
     {
         using var meter = new Meter(Utils.GetCurrentMethodName());
         var exportedItems = new List<Metric>();
-        using var meterProvider = Sdk.CreateMeterProviderBuilder()
+
+        using var container = this.BuildMeterProvider(out var meterProvider, builder => builder
             .AddMeter(meter.Name)
             .AddView("server*", MetricStreamConfiguration.Drop)
-            .AddInMemoryExporter(exportedItems)
-            .Build();
+            .AddInMemoryExporter(exportedItems));
 
         // Expecting two client metric streams as both server* are dropped.
         var serverRequests = meter.CreateCounter<long>("server.requests");
@@ -877,12 +1025,12 @@ public class MetricViewTests : MetricTestsBase
     {
         using var meter = new Meter(Utils.GetCurrentMethodName());
         var exportedItems = new List<Metric>();
-        using var meterProvider = Sdk.CreateMeterProviderBuilder()
+
+        using var container = this.BuildMeterProvider(out var meterProvider, builder => builder
             .AddMeter(meter.Name)
             .AddView("server.requests", MetricStreamConfiguration.Drop)
             .AddView("server.requests", "server.request_renamed")
-            .AddInMemoryExporter(exportedItems)
-            .Build();
+            .AddInMemoryExporter(exportedItems));
 
         // Expecting one metric stream even though a View is asking
         // to drop the instrument, because another View is matching
@@ -901,14 +1049,13 @@ public class MetricViewTests : MetricTestsBase
     {
         var exportedItems = new List<Metric>();
 
-        using var meter = new Meter($"{Utils.GetCurrentMethodName()}");
-        var meterProviderBuilder = Sdk.CreateMeterProviderBuilder()
+        using var meter = new Meter(Utils.GetCurrentMethodName());
+
+        using var container = this.BuildMeterProvider(out var meterProvider, builder => builder
             .AddMeter(meter.Name)
             .AddView("instrumentName", new MetricStreamConfiguration() { Description = "newDescription1" })
             .AddView("instrumentName", new MetricStreamConfiguration() { Description = "newDescription2" })
-            .AddInMemoryExporter(exportedItems);
-
-        using var meterProvider = meterProviderBuilder.Build();
+            .AddInMemoryExporter(exportedItems));
 
         var instrument = meter.CreateCounter<long>("instrumentName", "instrumentUnit", "instrumentDescription");
 
@@ -943,27 +1090,88 @@ public class MetricViewTests : MetricTestsBase
         Assert.Equal(10, metricPoint2.GetSumLong());
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void CardinalityLimitOfMatchingViewTakesPrecedenceOverMeterProvider(bool setDefault)
+    {
+        using var meter = new Meter(Utils.GetCurrentMethodName());
+        var exportedItems = new List<Metric>();
+
+        using var container = this.BuildMeterProvider(out var meterProvider, builder =>
+        {
+            if (setDefault)
+            {
+#pragma warning disable CS0618 // Type or member is obsolete
+                builder.SetMaxMetricPointsPerMetricStream(3);
+#pragma warning restore CS0618 // Type or member is obsolete
+            }
+
+            builder
+                .AddMeter(meter.Name)
+                .AddView((instrument) =>
+                {
+                    if (instrument.Name == "counter2")
+                    {
+                        return new MetricStreamConfiguration() { Name = "MetricStreamA", CardinalityLimit = 10000 };
+                    }
+
+                    return null;
+                })
+                .AddInMemoryExporter(exportedItems);
+        });
+
+        var counter1 = meter.CreateCounter<long>("counter1");
+        counter1.Add(100);
+
+        var counter2 = meter.CreateCounter<long>("counter2");
+        counter2.Add(100);
+
+        var counter3 = meter.CreateCounter<long>("counter3");
+        counter3.Add(100);
+
+        meterProvider.ForceFlush(MaxTimeToAllowForFlush);
+
+        Assert.Equal(3, exportedItems.Count);
+
+        Assert.Equal(10002, exportedItems[1].AggregatorStore.NumberOfMetricPoints);
+        if (setDefault)
+        {
+            Assert.Equal(5, exportedItems[0].AggregatorStore.NumberOfMetricPoints);
+            Assert.Equal(5, exportedItems[2].AggregatorStore.NumberOfMetricPoints);
+        }
+        else
+        {
+            Assert.Equal(2002, exportedItems[0].AggregatorStore.NumberOfMetricPoints);
+            Assert.Equal(2002, exportedItems[2].AggregatorStore.NumberOfMetricPoints);
+        }
+    }
+
     [Fact]
     public void ViewConflict_TwoDistinctInstruments_ThreeStreams()
     {
         var exportedItems = new List<Metric>();
 
-        using var meter = new Meter($"{Utils.GetCurrentMethodName()}");
-        var meterProviderBuilder = Sdk.CreateMeterProviderBuilder()
+        using var meter = new Meter(Utils.GetCurrentMethodName());
+
+        using var container = this.BuildMeterProvider(out var meterProvider, builder => builder
             .AddMeter(meter.Name)
             .AddView((instrument) =>
             {
-                return new MetricStreamConfiguration() { Name = "MetricStreamA", Description = "description" };
+                return new MetricStreamConfiguration() { Name = "MetricStreamA", Description = "description", CardinalityLimit = 256 };
             })
             .AddView((instrument) =>
             {
                 return instrument.Description == "description1"
-                    ? new MetricStreamConfiguration() { Name = "MetricStreamB" }
-                    : new MetricStreamConfiguration() { Name = "MetricStreamC" };
+                    ? new MetricStreamConfiguration() { Name = "MetricStreamB", CardinalityLimit = 3 }
+                    : new MetricStreamConfiguration() { Name = "MetricStreamC", CardinalityLimit = 200000 };
             })
-            .AddInMemoryExporter(exportedItems);
-
-        using var meterProvider = meterProviderBuilder.Build();
+            .AddView((instrument) =>
+            {
+                // This view is ignored as the passed in CardinalityLimit is out of range.
+                return new MetricStreamConfiguration() { Name = "MetricStreamD", CardinalityLimit = -1 };
+            })
+            .AddInMemoryExporter(exportedItems));
 
         var instrument1 = meter.CreateCounter<long>("name", "unit", "description1");
         var instrument2 = meter.CreateCounter<long>("name", "unit", "description2");
@@ -978,12 +1186,15 @@ public class MetricViewTests : MetricTestsBase
         var metricB = exportedItems[1];
         var metricC = exportedItems[2];
 
+        Assert.Equal(258, metricA.AggregatorStore.NumberOfMetricPoints);
         Assert.Equal("MetricStreamA", metricA.Name);
         Assert.Equal(20, GetAggregatedValue(metricA));
 
+        Assert.Equal(5, metricB.AggregatorStore.NumberOfMetricPoints);
         Assert.Equal("MetricStreamB", metricB.Name);
         Assert.Equal(10, GetAggregatedValue(metricB));
 
+        Assert.Equal(200002, metricC.AggregatorStore.NumberOfMetricPoints);
         Assert.Equal("MetricStreamC", metricC.Name);
         Assert.Equal(10, GetAggregatedValue(metricC));
 
@@ -1005,8 +1216,9 @@ public class MetricViewTests : MetricTestsBase
     {
         var exportedItems = new List<Metric>();
 
-        using var meter = new Meter($"{Utils.GetCurrentMethodName()}");
-        var meterProviderBuilder = Sdk.CreateMeterProviderBuilder()
+        using var meter = new Meter(Utils.GetCurrentMethodName());
+
+        using var container = this.BuildMeterProvider(out var meterProvider, builder => builder
             .AddMeter(meter.Name)
             .AddView((instrument) =>
             {
@@ -1016,14 +1228,12 @@ public class MetricViewTests : MetricTestsBase
             {
                 return new MetricStreamConfiguration { TagKeys = new[] { "key2" } };
             })
-            .AddInMemoryExporter(exportedItems);
-
-        using var meterProvider = meterProviderBuilder.Build();
+            .AddInMemoryExporter(exportedItems));
 
         var instrument1 = meter.CreateCounter<long>("name");
         var instrument2 = meter.CreateCounter<long>("name");
 
-        var tags = new KeyValuePair<string, object>[]
+        var tags = new KeyValuePair<string, object?>[]
         {
             new("key1", "value"),
             new("key2", "value"),
@@ -1037,8 +1247,8 @@ public class MetricViewTests : MetricTestsBase
         Assert.Equal(2, exportedItems.Count);
         var metric1 = new List<Metric>() { exportedItems[0] };
         var metric2 = new List<Metric>() { exportedItems[1] };
-        var tag1 = new List<KeyValuePair<string, object>> { tags[0] };
-        var tag2 = new List<KeyValuePair<string, object>> { tags[1] };
+        var tag1 = new List<KeyValuePair<string, object?>> { tags[0] };
+        var tag2 = new List<KeyValuePair<string, object?>> { tags[1] };
 
         Assert.Equal("name", exportedItems[0].Name);
         Assert.Equal("name", exportedItems[1].Name);
@@ -1053,8 +1263,9 @@ public class MetricViewTests : MetricTestsBase
     {
         var exportedItems = new List<Metric>();
 
-        using var meter = new Meter($"{Utils.GetCurrentMethodName()}");
-        var meterProviderBuilder = Sdk.CreateMeterProviderBuilder()
+        using var meter = new Meter(Utils.GetCurrentMethodName());
+
+        using var container = this.BuildMeterProvider(out var meterProvider, builder => builder
             .AddMeter(meter.Name)
             .AddView((instrument) =>
             {
@@ -1064,14 +1275,12 @@ public class MetricViewTests : MetricTestsBase
             {
                 return new MetricStreamConfiguration { TagKeys = new[] { "key1" } };
             })
-            .AddInMemoryExporter(exportedItems);
-
-        using var meterProvider = meterProviderBuilder.Build();
+            .AddInMemoryExporter(exportedItems));
 
         var instrument1 = meter.CreateCounter<long>("name");
         var instrument2 = meter.CreateCounter<long>("name");
 
-        var tags = new KeyValuePair<string, object>[]
+        var tags = new KeyValuePair<string, object?>[]
         {
             new("key1", "value"),
             new("key2", "value"),
@@ -1085,13 +1294,13 @@ public class MetricViewTests : MetricTestsBase
         Assert.Equal(2, exportedItems.Count);
 
         var metric1 = new List<Metric>() { exportedItems[0] };
-        var tag1 = new List<KeyValuePair<string, object>> { tags[0] };
+        var tag1 = new List<KeyValuePair<string, object?>> { tags[0] };
         Assert.Equal("name", exportedItems[0].Name);
         Assert.Equal(20, GetLongSum(metric1));
         CheckTagsForNthMetricPoint(metric1, tag1, 1);
 
         var metric2 = new List<Metric>() { exportedItems[1] };
-        var tag2 = new List<KeyValuePair<string, object>> { tags[0] };
+        var tag2 = new List<KeyValuePair<string, object?>> { tags[0] };
         Assert.Equal("name", exportedItems[1].Name);
         Assert.Equal(20, GetLongSum(metric2));
         CheckTagsForNthMetricPoint(metric2, tag2, 1);
@@ -1102,8 +1311,9 @@ public class MetricViewTests : MetricTestsBase
     {
         var exportedItems = new List<Metric>();
 
-        using var meter = new Meter($"{Utils.GetCurrentMethodName()}");
-        var meterProviderBuilder = Sdk.CreateMeterProviderBuilder()
+        using var meter = new Meter(Utils.GetCurrentMethodName());
+
+        using var container = this.BuildMeterProvider(out var meterProvider, builder => builder
             .AddMeter(meter.Name)
             .AddView((instrument) =>
             {
@@ -1113,9 +1323,7 @@ public class MetricViewTests : MetricTestsBase
             {
                 return new ExplicitBucketHistogramConfiguration { Boundaries = new[] { 10.0, 20.0 } };
             })
-            .AddInMemoryExporter(exportedItems);
-
-        using var meterProvider = meterProviderBuilder.Build();
+            .AddInMemoryExporter(exportedItems));
 
         var instrument1 = meter.CreateHistogram<long>("name");
         var instrument2 = meter.CreateHistogram<long>("name");
@@ -1180,8 +1388,9 @@ public class MetricViewTests : MetricTestsBase
     {
         var exportedItems = new List<Metric>();
 
-        using var meter = new Meter($"{Utils.GetCurrentMethodName()}");
-        var meterProviderBuilder = Sdk.CreateMeterProviderBuilder()
+        using var meter = new Meter(Utils.GetCurrentMethodName());
+
+        using var container = this.BuildMeterProvider(out var meterProvider, builder => builder
             .AddMeter(meter.Name)
             .AddView((instrument) =>
             {
@@ -1194,14 +1403,12 @@ public class MetricViewTests : MetricTestsBase
                     return null;
                 }
             })
-            .AddInMemoryExporter(exportedItems);
-
-        using var meterProvider = meterProviderBuilder.Build();
+            .AddInMemoryExporter(exportedItems));
 
         var instrument1 = meter.CreateCounter<long>("name");
         var instrument2 = meter.CreateCounter<long>("othername");
 
-        var tags = new KeyValuePair<string, object>[]
+        var tags = new KeyValuePair<string, object?>[]
         {
             new("key1", "value"),
             new("key2", "value"),
@@ -1216,8 +1423,8 @@ public class MetricViewTests : MetricTestsBase
         var metric1 = new List<Metric>() { exportedItems[0] };
         var metric2 = new List<Metric>() { exportedItems[1] };
 
-        var tags1 = new List<KeyValuePair<string, object>> { tags[0] };
-        var tags2 = new List<KeyValuePair<string, object>> { tags[0], tags[1] };
+        var tags1 = new List<KeyValuePair<string, object?>> { tags[0] };
+        var tags2 = new List<KeyValuePair<string, object?>> { tags[0], tags[1] };
 
         Assert.Equal("othername", exportedItems[0].Name);
         Assert.Equal("othername", exportedItems[1].Name);
@@ -1234,8 +1441,9 @@ public class MetricViewTests : MetricTestsBase
     {
         var exportedItems = new List<Metric>();
 
-        using var meter = new Meter($"{Utils.GetCurrentMethodName()}");
-        var meterProviderBuilder = Sdk.CreateMeterProviderBuilder()
+        using var meter = new Meter(Utils.GetCurrentMethodName());
+
+        using var container = this.BuildMeterProvider(out var meterProvider, builder => builder
             .AddMeter(meter.Name)
             .AddView((instrument) =>
             {
@@ -1248,9 +1456,7 @@ public class MetricViewTests : MetricTestsBase
                     return MetricStreamConfiguration.Drop;
                 }
             })
-            .AddInMemoryExporter(exportedItems);
-
-        using var meterProvider = meterProviderBuilder.Build();
+            .AddInMemoryExporter(exportedItems));
 
         var instrument1 = meter.CreateCounter<long>("name");
         var instrument2 = meter.CreateCounter<long>("othername");

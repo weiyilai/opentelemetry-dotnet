@@ -1,18 +1,5 @@
-// <copyright file="ZipkinSpan.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
 using System.Globalization;
 using System.Text.Json;
@@ -24,16 +11,16 @@ internal readonly struct ZipkinSpan
 {
     public ZipkinSpan(
         string traceId,
-        string parentId,
+        string? parentId,
         string id,
-        string kind,
+        string? kind,
         string name,
         long? timestamp,
         long? duration,
         ZipkinEndpoint localEndpoint,
-        ZipkinEndpoint remoteEndpoint,
+        ZipkinEndpoint? remoteEndpoint,
         in PooledList<ZipkinAnnotation> annotations,
-        in PooledList<KeyValuePair<string, object>> tags,
+        in PooledList<KeyValuePair<string, object?>> tags,
         bool? debug,
         bool? shared)
     {
@@ -57,11 +44,11 @@ internal readonly struct ZipkinSpan
 
     public string TraceId { get; }
 
-    public string ParentId { get; }
+    public string? ParentId { get; }
 
     public string Id { get; }
 
-    public string Kind { get; }
+    public string? Kind { get; }
 
     public string Name { get; }
 
@@ -71,11 +58,11 @@ internal readonly struct ZipkinSpan
 
     public ZipkinEndpoint LocalEndpoint { get; }
 
-    public ZipkinEndpoint RemoteEndpoint { get; }
+    public ZipkinEndpoint? RemoteEndpoint { get; }
 
     public PooledList<ZipkinAnnotation> Annotations { get; }
 
-    public PooledList<KeyValuePair<string, object>> Tags { get; }
+    public PooledList<KeyValuePair<string, object?>> Tags { get; }
 
     public bool? Debug { get; }
 
@@ -161,31 +148,27 @@ internal readonly struct ZipkinSpan
             writer.WriteEndArray();
         }
 
-        if (!this.Tags.IsEmpty || this.LocalEndpoint.Tags != null)
+        if (!this.Tags.IsEmpty || this.LocalEndpoint!.Tags != null)
         {
             writer.WritePropertyName(ZipkinSpanJsonHelper.TagsPropertyName);
             writer.WriteStartObject();
 
-            // this will be used when we convert int, double, int[], double[] to string
+            // Note: The spec says "Primitive types MUST be converted to string using en-US culture settings"
+            // https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/trace/sdk_exporters/zipkin.md#attribute
+
             var originalUICulture = Thread.CurrentThread.CurrentUICulture;
             Thread.CurrentThread.CurrentUICulture = CultureInfo.InvariantCulture;
 
             try
             {
-                foreach (var tag in this.LocalEndpoint.Tags ?? Enumerable.Empty<KeyValuePair<string, object>>())
+                foreach (var tag in this.LocalEndpoint!.Tags! ?? Enumerable.Empty<KeyValuePair<string, object?>>())
                 {
-                    if (ZipkinTagTransformer.Instance.TryTransformTag(tag, out var result))
-                    {
-                        writer.WriteString(tag.Key, result);
-                    }
+                    ZipkinTagWriter.Instance.TryWriteTag(ref writer, tag);
                 }
 
                 foreach (var tag in this.Tags)
                 {
-                    if (ZipkinTagTransformer.Instance.TryTransformTag(tag, out var result))
-                    {
-                        writer.WriteString(tag.Key, result);
-                    }
+                    ZipkinTagWriter.Instance.TryWriteTag(ref writer, tag);
                 }
             }
             finally

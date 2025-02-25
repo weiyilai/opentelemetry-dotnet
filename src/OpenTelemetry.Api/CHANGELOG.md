@@ -1,6 +1,125 @@
 # Changelog
 
+This file contains individual changes for the OpenTelemetry.Api package. For
+highlights and announcements covering all components see: [Release
+Notes](../../RELEASENOTES.md).
+
 ## Unreleased
+
+## 1.11.1
+
+Released 2025-Jan-22
+
+## 1.11.0
+
+Released 2025-Jan-15
+
+## 1.11.0-rc.1
+
+Released 2024-Dec-11
+
+## 1.10.0
+
+Released 2024-Nov-12
+
+* Updated `System.Diagnostics.DiagnosticSource` package version to
+  `9.0.0`.
+  ([#5967](https://github.com/open-telemetry/opentelemetry-dotnet/pull/5967))
+
+## 1.10.0-rc.1
+
+Released 2024-Nov-01
+
+## 1.10.0-beta.1
+
+Released 2024-Sep-30
+
+* **Breaking change:** CompositeTextMapPropagator.Fields now returns a
+  unioned set of fields from all combined propagators. Previously this always
+  returned an empty set.
+  ([#5745](https://github.com/open-telemetry/opentelemetry-dotnet/pull/5745))
+
+* Optimize performance of `TraceContextPropagator.Extract`.
+  ([#5749](https://github.com/open-telemetry/opentelemetry-dotnet/pull/5749))
+
+* Obsoleted the `ActivityExtensions.GetStatus` and
+  `ActivityExtensions.SetStatus` extension methods. Users should migrate to the
+  `System.Diagnostics.DiagnosticSource`
+  [Activity.SetStatus](https://learn.microsoft.com/dotnet/api/system.diagnostics.activity.setstatus)
+  API for setting the status and
+  [Activity.Status](https://learn.microsoft.com/dotnet/api/system.diagnostics.activity.status)
+  &
+  [Activity.StatusDescription](https://learn.microsoft.com/dotnet/api/system.diagnostics.activity.statusdescription)
+  APIs for reading the status of an `Activity` instance.
+  ([#5781](https://github.com/open-telemetry/opentelemetry-dotnet/pull/5781))
+
+* Updated `System.Diagnostics.DiagnosticSource` package version to
+  `9.0.0-rc.1.24431.7`.
+  ([#5853](https://github.com/open-telemetry/opentelemetry-dotnet/pull/5853))
+
+* Obsoleted the `ActivityExtensions.RecordException` extension method. Users
+  should migrate to the `System.Diagnostics.DiagnosticSource`
+  [Activity.AddException](https://learn.microsoft.com/dotnet/api/system.diagnostics.activity.addexception)
+  API for adding exceptions on an `Activity` instance.
+  ([#5841](https://github.com/open-telemetry/opentelemetry-dotnet/pull/5841))
+
+## 1.9.0
+
+Released 2024-Jun-14
+
+* **Breaking change:** Revert space character encoding change from `+` to `%20`
+  for baggage item values from [#5303](https://github.com/open-telemetry/opentelemetry-dotnet/pull/5303)
+  ([#5687](https://github.com/open-telemetry/opentelemetry-dotnet/pull/5687))
+
+## 1.9.0-rc.1
+
+Released 2024-Jun-07
+
+* The experimental APIs previously covered by `OTEL1000` (`LoggerProvider`,
+  `LoggerProviderBuilder`, & `IDeferredLoggerProviderBuilder`) are now part of
+  the public API and supported in stable builds.
+  ([#5648](https://github.com/open-telemetry/opentelemetry-dotnet/pull/5648))
+
+## 1.9.0-alpha.1
+
+Released 2024-May-20
+
+* **Breaking change:** Fix space character encoding from `+` to `%20`
+  for baggage item values when propagating baggage as defined in
+  [W3C Baggage propagation format specification](https://www.w3.org/TR/baggage/).
+  ([#5303](https://github.com/open-telemetry/opentelemetry-dotnet/pull/5303))
+
+## 1.8.1
+
+Released 2024-Apr-17
+
+## 1.8.0
+
+Released 2024-Apr-02
+
+## 1.8.0-rc.1
+
+Released 2024-Mar-27
+
+## 1.8.0-beta.1
+
+Released 2024-Mar-14
+
+## 1.7.0
+
+Released 2023-Dec-08
+
+## 1.7.0-rc.1
+
+Released 2023-Nov-29
+
+* Updated `System.Diagnostics.DiagnosticSource` package version to
+  `8.0.0`.
+  ([#5051](https://github.com/open-telemetry/opentelemetry-dotnet/pull/5051))
+
+## 1.7.0-alpha.1
+
+Released 2023-Oct-16
 
 * Fixed a bug which caused `Tracer.StartRootSpan` to generate a child span if a
   trace was running (`Activity.Current != null`).

@@ -1,18 +1,5 @@
-// <copyright file="MathHelper.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
 #pragma warning disable SA1119 // Statement should not use unnecessary parenthesis
 
@@ -25,7 +12,7 @@ internal static class MathHelper
     // https://github.com/dotnet/runtime/blob/v7.0.0/src/libraries/System.Private.CoreLib/src/System/Math.cs#L259
     public static double BitIncrement(double x)
     {
-#if NET6_0_OR_GREATER
+#if NET
         return Math.BitIncrement(x);
 #else
         long bits = BitConverter.DoubleToInt64Bits(x);
@@ -55,7 +42,7 @@ internal static class MathHelper
 
     public static double BitDecrement(double x)
     {
-#if NET6_0_OR_GREATER
+#if NET
         return Math.BitDecrement(x);
 #else
         long bits = BitConverter.DoubleToInt64Bits(x);

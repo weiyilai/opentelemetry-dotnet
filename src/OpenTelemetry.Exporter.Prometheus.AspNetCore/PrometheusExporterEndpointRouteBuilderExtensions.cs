@@ -1,18 +1,5 @@
-// <copyright file="PrometheusExporterEndpointRouteBuilderExtensions.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -77,10 +64,10 @@ public static class PrometheusExporterEndpointRouteBuilderExtensions
     /// <returns>A convention routes for the Prometheus scraping endpoint.</returns>
     public static IEndpointConventionBuilder MapPrometheusScrapingEndpoint(
         this IEndpointRouteBuilder endpoints,
-        string path,
-        MeterProvider meterProvider,
-        Action<IApplicationBuilder> configureBranchedPipeline,
-        string optionsName)
+        string? path,
+        MeterProvider? meterProvider,
+        Action<IApplicationBuilder>? configureBranchedPipeline,
+        string? optionsName)
     {
         var builder = endpoints.CreateApplicationBuilder();
 

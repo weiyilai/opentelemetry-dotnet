@@ -1,18 +1,5 @@
-// <copyright file="OtlpHttpExporterBenchmarks.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
 extern alias OpenTelemetryProtocol;
 
@@ -25,18 +12,19 @@ using OpenTelemetry.Tests;
 using OpenTelemetryProtocol::OpenTelemetry.Exporter;
 using OpenTelemetryProtocol::OpenTelemetry.Exporter.OpenTelemetryProtocol.Implementation;
 using OpenTelemetryProtocol::OpenTelemetry.Exporter.OpenTelemetryProtocol.Implementation.ExportClient;
+using OpenTelemetryProtocol::OpenTelemetry.Exporter.OpenTelemetryProtocol.Implementation.Transmission;
 
 namespace Benchmarks.Exporter;
 
 public class OtlpHttpExporterBenchmarks
 {
     private readonly byte[] buffer = new byte[1024 * 1024];
-    private IDisposable server;
-    private string serverHost;
+    private IDisposable? server;
+    private string? serverHost;
     private int serverPort;
-    private OtlpTraceExporter exporter;
-    private Activity activity;
-    private CircularBuffer<Activity> activityBatch;
+    private OtlpTraceExporter? exporter;
+    private Activity? activity;
+    private CircularBuffer<Activity>? activityBatch;
 
     [Params(1, 10, 100)]
     public int NumberOfBatches { get; set; }
@@ -74,7 +62,8 @@ public class OtlpHttpExporterBenchmarks
         this.exporter = new OtlpTraceExporter(
             options,
             new SdkLimitOptions(),
-            new OtlpHttpTraceExportClient(options, options.HttpClientFactory()));
+            new ExperimentalOptions(),
+            new OtlpExporterTransmissionHandler(new OtlpHttpExportClient(options, options.HttpClientFactory(), "v1/traces"), options.TimeoutMilliseconds));
 
         this.activity = ActivityHelper.CreateTestActivity();
         this.activityBatch = new CircularBuffer<Activity>(this.NumberOfSpans);
@@ -83,9 +72,9 @@ public class OtlpHttpExporterBenchmarks
     [GlobalCleanup]
     public void GlobalCleanup()
     {
-        this.exporter.Shutdown();
-        this.exporter.Dispose();
-        this.server.Dispose();
+        this.exporter?.Shutdown();
+        this.exporter?.Dispose();
+        this.server?.Dispose();
     }
 
     [Benchmark]
@@ -95,10 +84,10 @@ public class OtlpHttpExporterBenchmarks
         {
             for (int c = 0; c < this.NumberOfSpans; c++)
             {
-                this.activityBatch.Add(this.activity);
+                this.activityBatch!.Add(this.activity!);
             }
 
-            this.exporter.Export(new Batch<Activity>(this.activityBatch, this.NumberOfSpans));
+            this.exporter!.Export(new Batch<Activity>(this.activityBatch!, this.NumberOfSpans));
         }
     }
 }

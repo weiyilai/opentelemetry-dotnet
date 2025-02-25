@@ -1,18 +1,5 @@
-// <copyright file="PersistentStorageEventSource.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
 using System.Diagnostics.Tracing;
 using OpenTelemetry.Internal;
@@ -22,7 +9,7 @@ namespace OpenTelemetry.PersistentStorage.FileSystem;
 [EventSource(Name = EventSourceName)]
 internal sealed class PersistentStorageEventSource : EventSource
 {
-    public static PersistentStorageEventSource Log = new PersistentStorageEventSource();
+    public static readonly PersistentStorageEventSource Log = new PersistentStorageEventSource();
 #if BUILDING_INTERNAL_PERSISTENT_STORAGE
     private const string EventSourceName = "OpenTelemetry-PersistentStorage-FileSystem-Otlp";
 #else
@@ -158,7 +145,7 @@ internal sealed class PersistentStorageEventSource : EventSource
         this.WriteEvent(8, srcFilePath, destFilePath, ex);
     }
 
-    [Event(9, Message = "{0}: Error Message: {1}. Exception: {3}", Level = EventLevel.Error)]
+    [Event(9, Message = "{0}: Error Message: {1}. Exception: {2}", Level = EventLevel.Error)]
     public void PersistentStorageException(string className, string message, string ex)
     {
         this.WriteEvent(9, className, message, ex);

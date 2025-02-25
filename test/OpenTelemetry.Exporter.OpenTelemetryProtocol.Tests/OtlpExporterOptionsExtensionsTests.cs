@@ -1,84 +1,23 @@
-// <copyright file="OtlpExporterOptionsExtensionsTests.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
+#if NETFRAMEWORK
+using System.Net.Http;
+#endif
+using Microsoft.Extensions.Configuration;
+using OpenTelemetry.Exporter.OpenTelemetryProtocol.Implementation;
 using OpenTelemetry.Exporter.OpenTelemetryProtocol.Implementation.ExportClient;
+using OpenTelemetry.Exporter.OpenTelemetryProtocol.Implementation.Transmission;
 using Xunit;
-using Xunit.Sdk;
 
 namespace OpenTelemetry.Exporter.OpenTelemetryProtocol.Tests;
 
-public class OtlpExporterOptionsExtensionsTests : Http2UnencryptedSupportTests
+public class OtlpExporterOptionsExtensionsTests
 {
-    [Theory]
-    [InlineData("key=value", new string[] { "key" }, new string[] { "value" })]
-    [InlineData("key1=value1,key2=value2", new string[] { "key1", "key2" }, new string[] { "value1", "value2" })]
-    [InlineData("key1 = value1, key2=value2 ", new string[] { "key1", "key2" }, new string[] { "value1", "value2" })]
-    [InlineData("key==value", new string[] { "key" }, new string[] { "=value" })]
-    [InlineData("access-token=abc=/123,timeout=1234", new string[] { "access-token", "timeout" }, new string[] { "abc=/123", "1234" })]
-    [InlineData("key1=value1;key2=value2", new string[] { "key1" }, new string[] { "value1;key2=value2" })] // semicolon is not treated as a delimiter (https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/protocol/exporter.md#specifying-headers-via-environment-variables)
-    public void GetMetadataFromHeadersWorksCorrectFormat(string headers, string[] keys, string[] values)
-    {
-        var options = new OtlpExporterOptions
-        {
-            Headers = headers,
-        };
-        var metadata = options.GetMetadataFromHeaders();
-
-        Assert.Equal(OtlpExporterOptions.StandardHeaders.Length + keys.Length, metadata.Count);
-
-        for (int i = 0; i < keys.Length; i++)
-        {
-            Assert.Contains(metadata, entry => entry.Key == keys[i] && entry.Value == values[i]);
-        }
-
-        for (int i = 0; i < OtlpExporterOptions.StandardHeaders.Length; i++)
-        {
-            // Metadata key is always converted to lowercase.
-            // See: https://cloud.google.com/dotnet/docs/reference/Grpc.Core/latest/Grpc.Core.Metadata.Entry#Grpc_Core_Metadata_Entry__ctor_System_String_System_String_
-            Assert.Contains(metadata, entry => entry.Key == OtlpExporterOptions.StandardHeaders[i].Key.ToLower() && entry.Value == OtlpExporterOptions.StandardHeaders[i].Value);
-        }
-    }
-
-    [Theory]
-    [InlineData("headers")]
-    [InlineData("key,value")]
-    public void GetMetadataFromHeadersThrowsExceptionOnInvalidFormat(string headers)
-    {
-        try
-        {
-            var options = new OtlpExporterOptions
-            {
-                Headers = headers,
-            };
-            var metadata = options.GetMetadataFromHeaders();
-        }
-        catch (Exception ex)
-        {
-            Assert.IsType<ArgumentException>(ex);
-            Assert.Equal("Headers provided in an invalid format.", ex.Message);
-            return;
-        }
-
-        throw new XunitException("GetMetadataFromHeaders did not throw an exception for invalid input headers");
-    }
-
     [Theory]
     [InlineData("")]
     [InlineData(null)]
-    public void GetHeaders_NoOptionHeaders_ReturnsStandardHeaders(string optionHeaders)
+    public void GetHeaders_NoOptionHeaders_ReturnsStandardHeaders(string? optionHeaders)
     {
         var options = new OtlpExporterOptions
         {
@@ -96,52 +35,22 @@ public class OtlpExporterOptionsExtensionsTests : Http2UnencryptedSupportTests
     }
 
     [Theory]
-    [InlineData(OtlpExportProtocol.Grpc, typeof(OtlpGrpcTraceExportClient))]
-    [InlineData(OtlpExportProtocol.HttpProtobuf, typeof(OtlpHttpTraceExportClient))]
+#if NET462_OR_GREATER
+    [InlineData(OtlpExportProtocol.Grpc, typeof(GrpcExportClient))]
+#else
+    [InlineData(OtlpExportProtocol.Grpc, typeof(OtlpGrpcExportClient))]
+#endif
+    [InlineData(OtlpExportProtocol.HttpProtobuf, typeof(OtlpHttpExportClient))]
     public void GetTraceExportClient_SupportedProtocol_ReturnsCorrectExportClient(OtlpExportProtocol protocol, Type expectedExportClientType)
     {
-        if (protocol == OtlpExportProtocol.Grpc && Environment.Version.Major == 3)
-        {
-            // Adding the OtlpExporter creates a GrpcChannel.
-            // This switch must be set before creating a GrpcChannel when calling an insecure HTTP/2 endpoint.
-            // See: https://docs.microsoft.com/aspnet/core/grpc/troubleshoot#call-insecure-grpc-services-with-net-core-client
-            AppContext.SetSwitch("System.Net.Http.SocketsHttpHandler.Http2UnencryptedSupport", true);
-        }
-
         var options = new OtlpExporterOptions
         {
             Protocol = protocol,
         };
 
-        var exportClient = options.GetTraceExportClient();
+        var exportClient = options.GetExportClient(OtlpSignalType.Traces);
 
         Assert.Equal(expectedExportClientType, exportClient.GetType());
-    }
-
-    [Fact]
-    public void GetTraceExportClient_GetClientForGrpcWithoutUnencryptedFlag_ThrowsException()
-    {
-        // Adding the OtlpExporter creates a GrpcChannel.
-        // This switch must be set before creating a GrpcChannel when calling an insecure HTTP/2 endpoint.
-        // See: https://docs.microsoft.com/aspnet/core/grpc/troubleshoot#call-insecure-grpc-services-with-net-core-client
-        AppContext.SetSwitch("System.Net.Http.SocketsHttpHandler.Http2UnencryptedSupport", false);
-
-        var options = new OtlpExporterOptions
-        {
-            Protocol = OtlpExportProtocol.Grpc,
-        };
-
-        var exception = Record.Exception(() => options.GetTraceExportClient());
-
-        if (Environment.Version.Major == 3)
-        {
-            Assert.NotNull(exception);
-            Assert.IsType<InvalidOperationException>(exception);
-        }
-        else
-        {
-            Assert.Null(exception);
-        }
     }
 
     [Fact]
@@ -152,7 +61,7 @@ public class OtlpExporterOptionsExtensionsTests : Http2UnencryptedSupportTests
             Protocol = (OtlpExportProtocol)123,
         };
 
-        Assert.Throws<NotSupportedException>(() => options.GetTraceExportClient());
+        Assert.Throws<NotSupportedException>(() => options.GetExportClient(OtlpSignalType.Traces));
     }
 
     [Theory]
@@ -167,5 +76,60 @@ public class OtlpExporterOptionsExtensionsTests : Http2UnencryptedSupportTests
         var resultUri = uri.AppendPathIfNotPresent("v1/traces");
 
         Assert.Equal(expectedUri, resultUri.AbsoluteUri);
+    }
+
+    [Theory]
+#if NET462_OR_GREATER
+    [InlineData(OtlpExportProtocol.Grpc, typeof(GrpcExportClient), false, 10000, null)]
+    [InlineData(OtlpExportProtocol.Grpc, typeof(GrpcExportClient), false, 10000, "in_memory")]
+    [InlineData(OtlpExportProtocol.Grpc, typeof(GrpcExportClient), false, 10000, "disk")]
+#else
+    [InlineData(OtlpExportProtocol.Grpc, typeof(OtlpGrpcExportClient), false, 10000, null)]
+    [InlineData(OtlpExportProtocol.Grpc, typeof(OtlpGrpcExportClient), false, 10000, "in_memory")]
+    [InlineData(OtlpExportProtocol.Grpc, typeof(OtlpGrpcExportClient), false, 10000, "disk")]
+#endif
+    [InlineData(OtlpExportProtocol.HttpProtobuf, typeof(OtlpHttpExportClient), false, 10000, null)]
+    [InlineData(OtlpExportProtocol.HttpProtobuf, typeof(OtlpHttpExportClient), true, 8000, null)]
+    [InlineData(OtlpExportProtocol.HttpProtobuf, typeof(OtlpHttpExportClient), false, 10000, "in_memory")]
+    [InlineData(OtlpExportProtocol.HttpProtobuf, typeof(OtlpHttpExportClient), true, 8000, "in_memory")]
+    [InlineData(OtlpExportProtocol.HttpProtobuf, typeof(OtlpHttpExportClient), false, 10000, "disk")]
+    [InlineData(OtlpExportProtocol.HttpProtobuf, typeof(OtlpHttpExportClient), true, 8000, "disk")]
+    public void GetTransmissionHandler_InitializesCorrectHandlerExportClientAndTimeoutValue(OtlpExportProtocol protocol, Type exportClientType, bool customHttpClient, int expectedTimeoutMilliseconds, string? retryStrategy)
+    {
+        var exporterOptions = new OtlpExporterOptions() { Protocol = protocol };
+        if (customHttpClient)
+        {
+            exporterOptions.HttpClientFactory = () =>
+            {
+                return new HttpClient { Timeout = TimeSpan.FromMilliseconds(expectedTimeoutMilliseconds) };
+            };
+        }
+
+        var configuration = new ConfigurationBuilder()
+         .AddInMemoryCollection(new Dictionary<string, string?> { [ExperimentalOptions.OtlpRetryEnvVar] = retryStrategy })
+         .Build();
+
+        var transmissionHandler = exporterOptions.GetExportTransmissionHandler(new ExperimentalOptions(configuration), OtlpSignalType.Traces);
+        AssertTransmissionHandler(transmissionHandler, exportClientType, expectedTimeoutMilliseconds, retryStrategy);
+    }
+
+    private static void AssertTransmissionHandler(OtlpExporterTransmissionHandler transmissionHandler, Type exportClientType, int expectedTimeoutMilliseconds, string? retryStrategy)
+    {
+        if (retryStrategy == "in_memory")
+        {
+            Assert.True(transmissionHandler is OtlpExporterRetryTransmissionHandler);
+        }
+        else if (retryStrategy == "disk")
+        {
+            Assert.True(transmissionHandler is OtlpExporterPersistentStorageTransmissionHandler);
+        }
+        else
+        {
+            Assert.True(transmissionHandler is OtlpExporterTransmissionHandler);
+        }
+
+        Assert.Equal(exportClientType, transmissionHandler.ExportClient.GetType());
+
+        Assert.Equal(expectedTimeoutMilliseconds, transmissionHandler.TimeoutMilliseconds);
     }
 }

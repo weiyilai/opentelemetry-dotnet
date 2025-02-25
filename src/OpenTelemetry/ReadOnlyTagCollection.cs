@@ -1,18 +1,5 @@
-// <copyright file="ReadOnlyTagCollection.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
 namespace OpenTelemetry;
 
@@ -53,14 +40,14 @@ public readonly struct ReadOnlyTagCollection
         internal Enumerator(ReadOnlyTagCollection source)
         {
             this.source = source;
-            this.index = 0;
-            this.Current = default;
+            this.index = -1;
         }
 
         /// <summary>
         /// Gets the tag at the current position of the enumerator.
         /// </summary>
-        public KeyValuePair<string, object?> Current { get; private set; }
+        public readonly KeyValuePair<string, object?> Current
+            => this.source.KeyAndValues[this.index];
 
         /// <summary>
         /// Advances the enumerator to the next element of the <see
@@ -70,19 +57,6 @@ public readonly struct ReadOnlyTagCollection
         /// successfully advanced to the next element; <see
         /// langword="false"/> if the enumerator has passed the end of the
         /// collection.</returns>
-        public bool MoveNext()
-        {
-            int index = this.index;
-
-            if (index < this.source.Count)
-            {
-                this.Current = this.source.KeyAndValues[index];
-
-                this.index++;
-                return true;
-            }
-
-            return false;
-        }
+        public bool MoveNext() => ++this.index < this.source.Count;
     }
 }

@@ -1,18 +1,6 @@
-// <copyright file="SamplersTest.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
+
 using System.Diagnostics;
 using OpenTelemetry.Tests;
 using Xunit;
@@ -23,13 +11,11 @@ public class SamplersTest
 {
     private static readonly ActivityKind ActivityKindServer = ActivityKind.Server;
     private readonly ActivityTraceId traceId;
-    private readonly ActivitySpanId spanId;
     private readonly ActivitySpanId parentSpanId;
 
     public SamplersTest()
     {
         this.traceId = ActivityTraceId.CreateRandom();
-        this.spanId = ActivitySpanId.CreateRandom();
         this.parentSpanId = ActivitySpanId.CreateRandom();
     }
 
@@ -100,7 +86,7 @@ public class SamplersTest
         Assert.NotNull(activity);
         if (samplingDecision != SamplingDecision.Drop)
         {
-            Assert.Contains(new KeyValuePair<string, object>("tagkeybysampler", "tagvalueaddedbysampler"), activity.TagObjects);
+            Assert.Contains(new KeyValuePair<string, object?>("tagkeybysampler", "tagvalueaddedbysampler"), activity.TagObjects);
         }
 
         activity.Stop();
@@ -112,37 +98,7 @@ public class SamplersTest
     [InlineData(SamplingDecision.RecordAndSample)]
     public void SamplersCanModifyTraceStateOnLegacyActivity(SamplingDecision samplingDecision)
     {
-        var existingTraceState = "a=1,b=2";
-        var newTraceState = "a=1,b=2,c=3,d=4";
-        var testSampler = new TestSampler
-        {
-            SamplingAction = (samplingParams) =>
-            {
-                Assert.Equal(existingTraceState, samplingParams.ParentContext.TraceState);
-                return new SamplingResult(samplingDecision, newTraceState);
-            },
-        };
-
-        var operationNameForLegacyActivity = Utils.GetCurrentMethodName();
-        using var tracerProvider = Sdk.CreateTracerProviderBuilder()
-                    .SetSampler(testSampler)
-                    .AddLegacySource(operationNameForLegacyActivity)
-                    .Build();
-
-        using var parentActivity = new Activity("Foo");
-        parentActivity.TraceStateString = existingTraceState;
-        parentActivity.Start();
-
-        using var activity = new Activity(operationNameForLegacyActivity);
-        activity.Start();
-        Assert.NotNull(activity);
-        if (samplingDecision != SamplingDecision.Drop)
-        {
-            Assert.Equal(newTraceState, activity.TraceStateString);
-        }
-
-        activity.Stop();
-        parentActivity.Stop();
+        RunLegacyActivitySamplerTest(samplingDecision, samplerTraceState: "a=1,b=2,c=3,d=4");
     }
 
     [Theory]
@@ -151,36 +107,7 @@ public class SamplersTest
     [InlineData(SamplingDecision.RecordAndSample)]
     public void SamplersDoesNotImpactTraceStateWhenUsingNullLegacyActivity(SamplingDecision samplingDecision)
     {
-        var existingTraceState = "a=1,b=2";
-        var testSampler = new TestSampler
-        {
-            SamplingAction = (samplingParams) =>
-            {
-                Assert.Equal(existingTraceState, samplingParams.ParentContext.TraceState);
-                return new SamplingResult(samplingDecision);
-            },
-        };
-
-        var operationNameForLegacyActivity = Utils.GetCurrentMethodName();
-        using var tracerProvider = Sdk.CreateTracerProviderBuilder()
-                    .SetSampler(testSampler)
-                    .AddLegacySource(operationNameForLegacyActivity)
-                    .Build();
-
-        using var parentActivity = new Activity("Foo");
-        parentActivity.TraceStateString = existingTraceState;
-        parentActivity.Start();
-
-        using var activity = new Activity(operationNameForLegacyActivity);
-        activity.Start();
-        Assert.NotNull(activity);
-        if (samplingDecision != SamplingDecision.Drop)
-        {
-            Assert.Equal(existingTraceState, activity.TraceStateString);
-        }
-
-        activity.Stop();
-        parentActivity.Stop();
+        RunLegacyActivitySamplerTest(samplingDecision, samplerTraceState: null);
     }
 
     [Theory]
@@ -195,7 +122,15 @@ public class SamplersTest
         {
             SamplingAction = (samplingParams) =>
             {
-                Assert.Equal(parentTraceState, samplingParams.ParentContext.TraceState);
+                if (samplingParams.Name == "root")
+                {
+                    Assert.Equal(parentTraceState, samplingParams.ParentContext.TraceState);
+                }
+                else
+                {
+                    Assert.Equal(newTraceState, samplingParams.ParentContext.TraceState);
+                }
+
                 return new SamplingResult(sampling, newTraceState);
             },
         };
@@ -207,12 +142,54 @@ public class SamplersTest
             .SetSampler(testSampler)
             .Build();
 
-        var parentContext = new ActivityContext(ActivityTraceId.CreateRandom(), ActivitySpanId.CreateRandom(), ActivityTraceFlags.Recorded, parentTraceState, true);
+        // Note: Remote parent is set as recorded
+        var parentContext = new ActivityContext(ActivityTraceId.CreateRandom(), ActivitySpanId.CreateRandom(), ActivityTraceFlags.Recorded, parentTraceState, isRemote: true);
 
-        using var activity = activitySource.StartActivity("root", ActivityKind.Server, parentContext);
+        using var root = activitySource.StartActivity("root", ActivityKind.Server, parentContext);
+
+        // Note: We always create a root even for Drop. When dropping the
+        // created root is for propagation only
+        Assert.NotNull(root);
+        Assert.Equal(newTraceState, root.TraceStateString);
+
+        if (sampling == SamplingDecision.RecordAndSample)
+        {
+            Assert.True(root.Recorded);
+            Assert.True(root.IsAllDataRequested);
+        }
+        else if (sampling == SamplingDecision.RecordOnly)
+        {
+            // TODO: Update this when repo consumes DS v10.
+            // Note: Seems to be a bug in DiagnosticSource. Root in this case
+            // inherits context from the remote parent and Recorded doesn't get
+            // cleared. This should be fixed in .NET 10:
+            // https://github.com/dotnet/runtime/pull/111289
+            // Assert.False(root.Recorded);
+
+            Assert.True(root.IsAllDataRequested);
+        }
+        else
+        {
+            // TODO: Update this when repo consumes DS v10.
+            // Note: Seems to be a bug in DiagnosticSource. Root in this case
+            // inherits context from the remote parent and Recorded doesn't get
+            // cleared. This should be fixed in .NET 10:
+            // https://github.com/dotnet/runtime/pull/111289
+            // Assert.False(root.Recorded);
+
+            Assert.False(root.IsAllDataRequested);
+        }
+
+        using var child = activitySource.StartActivity("child", ActivityKind.Server);
+
         if (sampling != SamplingDecision.Drop)
         {
-            Assert.Equal(newTraceState, activity.TraceStateString);
+            Assert.NotNull(child);
+            Assert.Equal(newTraceState, child.TraceStateString);
+        }
+        else
+        {
+            Assert.Null(child);
         }
     }
 
@@ -249,6 +226,7 @@ public class SamplersTest
         using var activity = activitySource.StartActivity("root", ActivityKind.Server, parentContext);
         if (sampling != SamplingDecision.Drop)
         {
+            Assert.NotNull(activity);
             Assert.Equal(parentTraceState, activity.TraceStateString);
         }
     }
@@ -268,6 +246,60 @@ public class SamplersTest
             .Build();
 
         Assert.Throws<InvalidOperationException>(() => activitySource.StartActivity("ThrowingSampler"));
+    }
+
+    private static void RunLegacyActivitySamplerTest(SamplingDecision samplingDecision, string? samplerTraceState)
+    {
+        var existingTraceState = "a=1,b=2";
+
+        var operationNameForLegacyActivity = Utils.GetCurrentMethodName();
+
+        var testSampler = new TestSampler
+        {
+            SamplingAction = (samplingParams) =>
+            {
+                Assert.Equal(samplingParams.Name, operationNameForLegacyActivity);
+                Assert.Equal(existingTraceState, samplingParams.ParentContext.TraceState);
+                return new SamplingResult(samplingDecision, samplerTraceState);
+            },
+        };
+
+        using var tracerProvider = Sdk.CreateTracerProviderBuilder()
+            .SetSampler(testSampler)
+            .AddLegacySource(operationNameForLegacyActivity)
+            .Build();
+
+        using var parentActivity = new Activity("Foo");
+        parentActivity.TraceStateString = existingTraceState;
+        parentActivity.Start();
+
+        using var childActivity = new Activity(operationNameForLegacyActivity);
+        childActivity.Start();
+
+        if (samplerTraceState != null)
+        {
+            Assert.Equal(samplerTraceState, childActivity.TraceStateString);
+        }
+        else
+        {
+            Assert.Equal(existingTraceState, childActivity.TraceStateString);
+        }
+
+        if (samplingDecision == SamplingDecision.RecordAndSample)
+        {
+            Assert.True(childActivity.Recorded);
+            Assert.True(childActivity.IsAllDataRequested);
+        }
+        else if (samplingDecision == SamplingDecision.RecordOnly)
+        {
+            Assert.False(childActivity.Recorded);
+            Assert.True(childActivity.IsAllDataRequested);
+        }
+        else
+        {
+            Assert.False(childActivity.Recorded);
+            Assert.False(childActivity.IsAllDataRequested);
+        }
     }
 
     private sealed class ThrowingSampler : Sampler

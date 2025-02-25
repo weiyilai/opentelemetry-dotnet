@@ -1,18 +1,5 @@
-// <copyright file="OtlpLogExporterBenchmarks.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
 #if !NETFRAMEWORK
 extern alias OpenTelemetryProtocol;
@@ -29,7 +16,7 @@ using OpenTelemetry.Internal;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Tests;
 using OpenTelemetryProtocol::OpenTelemetry.Exporter;
-using OtlpCollector = OpenTelemetryProtocol::OpenTelemetry.Proto.Collector.Logs.V1;
+using OtlpCollector = OpenTelemetry.Proto.Collector.Logs.V1;
 
 /*
 BenchmarkDotNet v0.13.6, Windows 11 (10.0.22621.2134/22H2/2022Update/SunValley2) (Hyper-V)
@@ -49,13 +36,13 @@ namespace Benchmarks.Exporter;
 
 public class OtlpLogExporterBenchmarks
 {
-    private OtlpLogExporter exporter;
-    private LogRecord logRecord;
-    private CircularBuffer<LogRecord> logRecordBatch;
+    private OtlpLogExporter? exporter;
+    private LogRecord? logRecord;
+    private CircularBuffer<LogRecord>? logRecordBatch;
 
-    private IHost host;
-    private IDisposable server;
-    private string serverHost;
+    private IHost? host;
+    private IDisposable? server;
+    private string? serverHost;
     private int serverPort;
 
     [GlobalSetup(Target = nameof(OtlpLogExporter_Grpc))]
@@ -116,29 +103,29 @@ public class OtlpLogExporterBenchmarks
     [GlobalCleanup(Target = nameof(OtlpLogExporter_Grpc))]
     public void GlobalCleanupGrpc()
     {
-        this.exporter.Shutdown();
-        this.exporter.Dispose();
-        this.host.Dispose();
+        this.exporter?.Shutdown();
+        this.exporter?.Dispose();
+        this.host?.Dispose();
     }
 
     [GlobalCleanup(Target = nameof(OtlpLogExporter_Http))]
     public void GlobalCleanupHttp()
     {
-        this.exporter.Shutdown();
-        this.exporter.Dispose();
-        this.server.Dispose();
+        this.exporter?.Shutdown();
+        this.exporter?.Dispose();
+        this.server?.Dispose();
     }
 
     [Benchmark]
     public void OtlpLogExporter_Http()
     {
-        this.exporter.Export(new Batch<LogRecord>(this.logRecordBatch, 1));
+        this.exporter!.Export(new Batch<LogRecord>(this.logRecordBatch!, 1));
     }
 
     [Benchmark]
     public void OtlpLogExporter_Grpc()
     {
-        this.exporter.Export(new Batch<LogRecord>(this.logRecordBatch, 1));
+        this.exporter!.Export(new Batch<LogRecord>(this.logRecordBatch!, 1));
     }
 
     private sealed class MockLogService : OtlpCollector.LogsService.LogsServiceBase

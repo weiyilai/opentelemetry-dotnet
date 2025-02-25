@@ -1,18 +1,5 @@
-// <copyright file="InMemoryExporterMetricsExtensions.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -64,15 +51,15 @@ public static class InMemoryExporterMetricsExtensions
     /// Be aware that <see cref="Metric"/> may continue to be updated after export.
     /// </remarks>
     /// <param name="builder"><see cref="MeterProviderBuilder"/> builder to use.</param>
-    /// <param name="name">Name which is used when retrieving options.</param>
+    /// <param name="name">Optional name which is used when retrieving options.</param>
     /// <param name="exportedItems">Collection which will be populated with the exported <see cref="Metric"/>.</param>
-    /// <param name="configureMetricReader">Callback action for configuring <see cref="MetricReaderOptions"/>.</param>
+    /// <param name="configureMetricReader">Optional callback action for configuring <see cref="MetricReaderOptions"/>.</param>
     /// <returns>The instance of <see cref="MeterProviderBuilder"/> to chain the calls.</returns>
     public static MeterProviderBuilder AddInMemoryExporter(
         this MeterProviderBuilder builder,
-        string name,
+        string? name,
         ICollection<Metric> exportedItems,
-        Action<MetricReaderOptions> configureMetricReader)
+        Action<MetricReaderOptions>? configureMetricReader)
     {
         Guard.ThrowIfNull(builder);
         Guard.ThrowIfNull(exportedItems);
@@ -132,15 +119,15 @@ public static class InMemoryExporterMetricsExtensions
     /// Use this if you need a copy of <see cref="Metric"/> that will not be updated after export.
     /// </remarks>
     /// <param name="builder"><see cref="MeterProviderBuilder"/> builder to use.</param>
-    /// <param name="name">Name which is used when retrieving options.</param>
+    /// <param name="name">Optional name which is used when retrieving options.</param>
     /// <param name="exportedItems">Collection which will be populated with the exported <see cref="Metric"/> represented as <see cref="MetricSnapshot"/>.</param>
-    /// <param name="configureMetricReader">Callback action for configuring <see cref="MetricReaderOptions"/>.</param>
+    /// <param name="configureMetricReader">Optional callback action for configuring <see cref="MetricReaderOptions"/>.</param>
     /// <returns>The instance of <see cref="MeterProviderBuilder"/> to chain the calls.</returns>
     public static MeterProviderBuilder AddInMemoryExporter(
         this MeterProviderBuilder builder,
-        string name,
+        string? name,
         ICollection<MetricSnapshot> exportedItems,
-        Action<MetricReaderOptions> configureMetricReader)
+        Action<MetricReaderOptions>? configureMetricReader)
     {
         Guard.ThrowIfNull(builder);
         Guard.ThrowIfNull(exportedItems);

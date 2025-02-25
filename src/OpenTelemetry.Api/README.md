@@ -37,13 +37,13 @@ telemetry is exported to a specific telemetry backend, how to sample the
 telemetry, etc. The API consists of [Tracing
 API](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/trace/api.md),
 [Logging
-API](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/logs/overview.md),
+API](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/logs/README.md),
 [Metrics
 API](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/metrics/api.md),
 [Context and Propagation
 API](https://github.com/open-telemetry/opentelemetry-specification/tree/main/specification/context),
 and a set of [semantic
-conventions](https://github.com/open-telemetry/opentelemetry-specification/tree/main/specification/trace/semantic_conventions).
+conventions](https://github.com/open-telemetry/semantic-conventions/blob/main/docs/general/trace.md).
 
 ### Tracing API
 
@@ -153,11 +153,11 @@ required only for the following scenarios:
    [Propagators](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/context/api-propagators.md),
    to inject and extract context data. Some of the most common libraries
    requiring this include
-   [HttpClient](../OpenTelemetry.Instrumentation.Http/README.md), [ASP.NET
-   Core](../OpenTelemetry.Instrumentation.AspNetCore/README.md). This repo
-   already provides instrumentation for these common libraries. If your library
-   is not built on top of these, and want to leverage propagators, follow the
-   [Context propagation](#context-propagation) section.
+   [HttpClient](https://github.com/open-telemetry/opentelemetry-dotnet-contrib/tree/main/src/OpenTelemetry.Instrumentation.Http/README.md),
+   [ASP.NET Core](https://github.com/open-telemetry/opentelemetry-dotnet-contrib/tree/main/src/OpenTelemetry.Instrumentation.AspNetCore/README.md).
+   This or contrib repository already provides instrumentation for these common
+   libraries. If your library is not built on top of these, and want to leverage
+   propagators, follow the [Context propagation](#context-propagation) section.
 
 3. You want to leverage
    [Baggage](#baggage-api)
@@ -185,7 +185,7 @@ here as well.
 
     ```csharp
     static ActivitySource activitySource = new ActivitySource(
-        "companyname.product.instrumentationlibrary",
+        "MyCompany.MyProduct.MyLibrary",
         "1.0.0");
     ```
 
@@ -206,8 +206,10 @@ here as well.
     this activity are protected with a null check.
 
 4. Populate activity with tags following the [OpenTelemetry semantic
-   conventions](https://github.com/open-telemetry/opentelemetry-specification/tree/main/specification/trace/semantic_conventions).
-   It is highly recommended to check `activity.IsAllDataRequested`, before
+   conventions](https://github.com/open-telemetry/semantic-conventions/blob/main/docs/general/trace.md),
+   using the
+   [SetTag](https://learn.microsoft.com/dotnet/api/system.diagnostics.activity.settag)
+   API. It is highly recommended to check `activity.IsAllDataRequested`, before
    populating any tags which are not readily available. `IsAllDataRequested` is
    the same as
    [Span.IsRecording](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/trace/api.md#isrecording)
@@ -221,11 +223,6 @@ here as well.
         activity.SetTag("http.url", "http://www.mywebsite.com");
     }
     ```
-
-    The recommended way to [set span
-    attributes](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/trace/api.md#set-attributes)
-    in `Activity` class is by using `SetTag()`. OpenTelemetry users should not
-    use other methods like `AddTag`, `SetCustomProperty` on `Activity`.
 
 5. Perform application/library logic.
 
@@ -311,7 +308,7 @@ chose not to sample this activity.
    Attributes](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/trace/api.md#set-attributes).
    Earlier sample showed the usage of `SetTag` method of `Activity` to add tags.
    Refer to the
-   [specification](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/common/common.md#attribute-and-label-naming)
+   [specification](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/common/attribute-naming.md)
    for best practices on naming tags. It is also possible to provide an initial
    set of tags during activity creation, as shown below. It is recommended to
    provide all available `Tags` during activity creation itself, as
@@ -335,11 +332,13 @@ chose not to sample this activity.
 
 4. Activity Links
 
-   Apart from the parent-child relation, activities can be linked using
-   `ActivityLinks` which represent the OpenTelemetry
-   [Links](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/overview.md#links-between-spans).
-   The linked activities must be provided during the creation time, as shown
-   below.
+   In addition to parent-child relationships, activities can also be linked
+   using `ActivityLinks`, which represent
+   [Links](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/overview.md#links-between-spans)
+   in OpenTelemetry. Providing activity links during creation is recommended, as
+   this allows samplers to consider them when deciding whether to sample an
+   activity. However, starting with `System.Diagnostics.DiagnosticSource` 9.0.0,
+   links can also be added after an activity is created.
 
     ```csharp
     var activityLinks = new List<ActivityLink>();
@@ -362,12 +361,19 @@ chose not to sample this activity.
         ActivityKind.Server,
         default(ActivityContext),
         initialTags,
-        activityLinks);
+        activityLinks); // links provided at creation time.
+
+    // One may add links after activity is created too.
+    var linkedContext3 = new ActivityContext(
+        ActivityTraceId.CreateFromString("01260a70a81e1fa3ad5a8acfeaa0f711"),
+        ActivitySpanId.CreateFromString("34739aa9e2239da1"),
+        ActivityTraceFlags.None);
+    activity?.AddLink(linkedContext3);
     ```
 
-    Note that `Activity` above is created with `default(ActivityContext)`
-    parent, which makes it child of implicit `Activity.Current` or orphan if
-    there is no `Current`.
+   Note that `Activity` above is created with `default(ActivityContext)`
+   parent, which makes it child of implicit `Activity.Current` or orphan if
+   there is no `Current`.
 
 ### Adding Events
 
@@ -452,8 +458,9 @@ and
 [extract](../../examples/MicroserviceExample/Utils/Messaging/MessageReceiver.cs)
 context.
 
-**Note on instrumentation libraries**: If you are using the instrumentation
-libraries shipped from this repo [e.g. [ASP.NET
+> [!NOTE]
+> If you are using the instrumentation libraries shipped from this repo [e.g.
+[ASP.NET
 Core](https://github.com/open-telemetry/opentelemetry-dotnet/tree/main/src/OpenTelemetry.Instrumentation.AspNetCore)
 or
 [HttpClient](https://github.com/open-telemetry/opentelemetry-dotnet/tree/main/src/OpenTelemetry.Instrumentation.Http)],
@@ -503,7 +510,7 @@ Windows-based .NET implementation).
 
     The above requires import of the `System.Diagnostics.Metrics` namespace.
 
-    > **Note**
+    > [!NOTE]
     > It is important to note that `Meter` instances are created by
     using its constructor, and *not* by calling a `GetMeter` method on the
     `MeterProvider`. This is an important distinction from the [OpenTelemetry
@@ -541,4 +548,8 @@ seeing these internal logs.
 
 ## References
 
-* [OpenTelemetry Project](https://opentelemetry.io/)
+* [OpenTelemetry Baggage API specification](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/baggage/api.md)
+* [OpenTelemetry Logs Bridge API specification](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/logs/bridge-api.md)
+* [OpenTelemetry Metrics API specification](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/metrics/api.md)
+* [OpenTelemetry Propagators API specification](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/context/api-propagators.md)
+* [OpenTelemetry Tracing API specification](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/trace/api.md)

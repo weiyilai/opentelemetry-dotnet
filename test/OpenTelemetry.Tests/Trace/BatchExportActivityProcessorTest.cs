@@ -1,18 +1,5 @@
-// <copyright file="BatchExportActivityProcessorTest.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
 using System.Diagnostics;
 using OpenTelemetry.Exporter;
@@ -25,7 +12,7 @@ public class BatchExportActivityProcessorTest
     [Fact]
     public void CheckNullExporter()
     {
-        Assert.Throws<ArgumentNullException>(() => new BatchActivityExportProcessor(null));
+        Assert.Throws<ArgumentNullException>(() => new BatchActivityExportProcessor(null!));
     }
 
     [Fact]
@@ -131,7 +118,7 @@ public class BatchExportActivityProcessorTest
     [InlineData(Timeout.Infinite)]
     [InlineData(0)]
     [InlineData(1)]
-    public void CheckShutdownExport(int timeout)
+    public void CheckShutdownExport(int timeoutMilliseconds)
     {
         var exportedItems = new List<Activity>();
         using var exporter = new InMemoryExporter<Activity>(exportedItems);
@@ -147,12 +134,11 @@ public class BatchExportActivityProcessorTest
         };
 
         processor.OnEnd(activity);
-        processor.Shutdown(timeout);
+        processor.Shutdown(timeoutMilliseconds);
 
-        if (timeout == 0)
+        if (timeoutMilliseconds < 1_000)
         {
-            // Shutdown(0) will trigger flush and return immediately, so let's sleep for a while
-            Thread.Sleep(1_000);
+            Thread.Sleep(1_000 - timeoutMilliseconds);
         }
 
         Assert.Single(exportedItems);

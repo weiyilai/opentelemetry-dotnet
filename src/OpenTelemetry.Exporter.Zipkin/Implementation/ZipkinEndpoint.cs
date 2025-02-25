@@ -1,18 +1,5 @@
-// <copyright file="ZipkinEndpoint.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
 using System.Text.Json;
 
@@ -26,11 +13,11 @@ internal sealed class ZipkinEndpoint
     }
 
     public ZipkinEndpoint(
-        string serviceName,
-        string ipv4,
-        string ipv6,
+        string? serviceName,
+        string? ipv4,
+        string? ipv6,
         int? port,
-        Dictionary<string, object> tags)
+        Dictionary<string, object>? tags)
     {
         this.ServiceName = serviceName;
         this.Ipv4 = ipv4;
@@ -39,15 +26,15 @@ internal sealed class ZipkinEndpoint
         this.Tags = tags;
     }
 
-    public string ServiceName { get; }
+    public string? ServiceName { get; }
 
-    public string Ipv4 { get; }
+    public string? Ipv4 { get; }
 
-    public string Ipv6 { get; }
+    public string? Ipv6 { get; }
 
     public int? Port { get; }
 
-    public Dictionary<string, object> Tags { get; }
+    public Dictionary<string, object>? Tags { get; }
 
     public static ZipkinEndpoint Create(string serviceName)
     {

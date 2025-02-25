@@ -1,23 +1,11 @@
-// <copyright file="TracerProviderSdk.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using OpenTelemetry.Internal;
 using OpenTelemetry.Resources;
@@ -26,6 +14,9 @@ namespace OpenTelemetry.Trace;
 
 internal sealed class TracerProviderSdk : TracerProvider
 {
+    internal const string TracesSamplerConfigKey = "OTEL_TRACES_SAMPLER";
+    internal const string TracesSamplerArgConfigKey = "OTEL_TRACES_SAMPLER_ARG";
+
     internal readonly IServiceProvider ServiceProvider;
     internal readonly IDisposable? OwnedServiceProvider;
     internal int ShutdownCount;
@@ -66,13 +57,11 @@ internal sealed class TracerProviderSdk : TracerProvider
         StringBuilder processorsAdded = new StringBuilder();
         StringBuilder instrumentationFactoriesAdded = new StringBuilder();
 
-        state.AddExceptionProcessorIfEnabled();
-
         var resourceBuilder = state.ResourceBuilder ?? ResourceBuilder.CreateDefault();
         resourceBuilder.ServiceProvider = serviceProvider;
         this.Resource = resourceBuilder.Build();
 
-        this.sampler = state.Sampler ?? new ParentBasedSampler(new AlwaysOnSampler());
+        this.sampler = GetSampler(serviceProvider!.GetRequiredService<IConfiguration>(), state.Sampler);
         OpenTelemetrySdkEventSource.Log.TracerProviderSdkEvent($"Sampler added = \"{this.sampler.GetType()}\".");
 
         this.supportLegacyActivity = state.LegacyActivityOperationNames.Count > 0;
@@ -87,7 +76,12 @@ internal sealed class TracerProviderSdk : TracerProvider
             }
         }
 
-        foreach (var processor in state.Processors)
+        // Note: Linq OrderBy performs a stable sort, which is a requirement here
+        IEnumerable<BaseProcessor<Activity>> processors = state.Processors.OrderBy(p => p.PipelineWeight);
+
+        state.AddExceptionProcessorIfEnabled(ref processors);
+
+        foreach (var processor in processors)
         {
             this.AddProcessor(processor);
             processorsAdded.Append(processor.GetType());
@@ -117,7 +111,7 @@ internal sealed class TracerProviderSdk : TracerProvider
             OpenTelemetrySdkEventSource.Log.TracerProviderSdkEvent($"Instrumentations added = \"{instrumentationFactoriesAdded}\".");
         }
 
-        var listener = new ActivityListener();
+        var activityListener = new ActivityListener();
 
         if (this.supportLegacyActivity)
         {
@@ -131,7 +125,7 @@ internal sealed class TracerProviderSdk : TracerProvider
                 legacyActivityPredicate = activity => state.LegacyActivityOperationNames.Contains(activity.OperationName);
             }
 
-            listener.ActivityStarted = activity =>
+            activityListener.ActivityStarted = activity =>
             {
                 OpenTelemetrySdkEventSource.Log.ActivityStarted(activity);
 
@@ -169,7 +163,7 @@ internal sealed class TracerProviderSdk : TracerProvider
                 }
             };
 
-            listener.ActivityStopped = activity =>
+            activityListener.ActivityStopped = activity =>
             {
                 OpenTelemetrySdkEventSource.Log.ActivityStopped(activity);
 
@@ -200,7 +194,7 @@ internal sealed class TracerProviderSdk : TracerProvider
         }
         else
         {
-            listener.ActivityStarted = activity =>
+            activityListener.ActivityStarted = activity =>
             {
                 OpenTelemetrySdkEventSource.Log.ActivityStarted(activity);
 
@@ -210,7 +204,7 @@ internal sealed class TracerProviderSdk : TracerProvider
                 }
             };
 
-            listener.ActivityStopped = activity =>
+            activityListener.ActivityStopped = activity =>
             {
                 OpenTelemetrySdkEventSource.Log.ActivityStopped(activity);
 
@@ -236,20 +230,20 @@ internal sealed class TracerProviderSdk : TracerProvider
 
         if (this.sampler is AlwaysOnSampler)
         {
-            listener.Sample = (ref ActivityCreationOptions<ActivityContext> options) =>
+            activityListener.Sample = (ref ActivityCreationOptions<ActivityContext> options) =>
                 !Sdk.SuppressInstrumentation ? ActivitySamplingResult.AllDataAndRecorded : ActivitySamplingResult.None;
             this.getRequestedDataAction = this.RunGetRequestedDataAlwaysOnSampler;
         }
         else if (this.sampler is AlwaysOffSampler)
         {
-            listener.Sample = (ref ActivityCreationOptions<ActivityContext> options) =>
-                !Sdk.SuppressInstrumentation ? PropagateOrIgnoreData(options.Parent) : ActivitySamplingResult.None;
+            activityListener.Sample = (ref ActivityCreationOptions<ActivityContext> options) =>
+                !Sdk.SuppressInstrumentation ? PropagateOrIgnoreData(ref options) : ActivitySamplingResult.None;
             this.getRequestedDataAction = this.RunGetRequestedDataAlwaysOffSampler;
         }
         else
         {
             // This delegate informs ActivitySource about sampling decision when the parent context is an ActivityContext.
-            listener.Sample = (ref ActivityCreationOptions<ActivityContext> options) =>
+            activityListener.Sample = (ref ActivityCreationOptions<ActivityContext> options) =>
                 !Sdk.SuppressInstrumentation ? ComputeActivitySamplingResult(ref options, this.sampler) : ActivitySamplingResult.None;
             this.getRequestedDataAction = this.RunGetRequestedDataOtherSampler;
         }
@@ -266,7 +260,7 @@ internal sealed class TracerProviderSdk : TracerProvider
 
                 // Function which takes ActivitySource and returns true/false to indicate if it should be subscribed to
                 // or not.
-                listener.ShouldListenTo = (activitySource) =>
+                activityListener.ShouldListenTo = activitySource =>
                     this.supportLegacyActivity ?
                     string.IsNullOrEmpty(activitySource.Name) || regex.IsMatch(activitySource.Name) :
                     regex.IsMatch(activitySource.Name);
@@ -282,19 +276,19 @@ internal sealed class TracerProviderSdk : TracerProvider
 
                 // Function which takes ActivitySource and returns true/false to indicate if it should be subscribed to
                 // or not.
-                listener.ShouldListenTo = (activitySource) => activitySources.Contains(activitySource.Name);
+                activityListener.ShouldListenTo = activitySource => activitySources.Contains(activitySource.Name);
             }
         }
         else
         {
             if (this.supportLegacyActivity)
             {
-                listener.ShouldListenTo = (activitySource) => string.IsNullOrEmpty(activitySource.Name);
+                activityListener.ShouldListenTo = activitySource => string.IsNullOrEmpty(activitySource.Name);
             }
         }
 
-        ActivitySource.AddActivityListener(listener);
-        this.listener = listener;
+        ActivitySource.AddActivityListener(activityListener);
+        this.listener = activityListener;
         OpenTelemetrySdkEventSource.Log.TracerProviderSdkEvent("TracerProvider built successfully.");
     }
 
@@ -358,18 +352,14 @@ internal sealed class TracerProviderSdk : TracerProvider
     internal bool OnShutdown(int timeoutMilliseconds)
     {
         // TO DO Put OnShutdown logic in a task to run within the user provider timeOutMilliseconds
-        bool? result;
-        if (this.instrumentations != null)
+        foreach (var item in this.instrumentations)
         {
-            foreach (var item in this.instrumentations)
-            {
-                (item as IDisposable)?.Dispose();
-            }
-
-            this.instrumentations.Clear();
+            (item as IDisposable)?.Dispose();
         }
 
-        result = this.processor?.Shutdown(timeoutMilliseconds);
+        this.instrumentations.Clear();
+
+        bool? result = this.processor?.Shutdown(timeoutMilliseconds);
         this.listener?.Dispose();
         return result ?? true;
     }
@@ -380,15 +370,12 @@ internal sealed class TracerProviderSdk : TracerProvider
         {
             if (disposing)
             {
-                if (this.instrumentations != null)
+                foreach (var item in this.instrumentations)
                 {
-                    foreach (var item in this.instrumentations)
-                    {
-                        (item as IDisposable)?.Dispose();
-                    }
-
-                    this.instrumentations.Clear();
+                    (item as IDisposable)?.Dispose();
                 }
+
+                this.instrumentations.Clear();
 
                 (this.sampler as IDisposable)?.Dispose();
 
@@ -411,6 +398,76 @@ internal sealed class TracerProviderSdk : TracerProvider
         base.Dispose(disposing);
     }
 
+    private static Sampler GetSampler(IConfiguration configuration, Sampler? stateSampler)
+    {
+        var sampler = stateSampler;
+
+        if (configuration.TryGetStringValue(TracesSamplerConfigKey, out var configValue))
+        {
+            if (sampler != null)
+            {
+                OpenTelemetrySdkEventSource.Log.TracerProviderSdkEvent(
+                    $"Trace sampler configuration value '{configValue}' has been ignored because a value '{sampler.GetType().FullName}' was set programmatically.");
+                return sampler;
+            }
+
+            switch (configValue)
+            {
+                case var _ when string.Equals(configValue, "always_on", StringComparison.OrdinalIgnoreCase):
+                    sampler = new AlwaysOnSampler();
+                    break;
+                case var _ when string.Equals(configValue, "always_off", StringComparison.OrdinalIgnoreCase):
+                    sampler = new AlwaysOffSampler();
+                    break;
+                case var _ when string.Equals(configValue, "traceidratio", StringComparison.OrdinalIgnoreCase):
+                    {
+                        var traceIdRatio = ReadTraceIdRatio(configuration);
+                        sampler = new TraceIdRatioBasedSampler(traceIdRatio);
+                        break;
+                    }
+
+                case var _ when string.Equals(configValue, "parentbased_always_on", StringComparison.OrdinalIgnoreCase):
+                    sampler = new ParentBasedSampler(new AlwaysOnSampler());
+                    break;
+                case var _ when string.Equals(configValue, "parentbased_always_off", StringComparison.OrdinalIgnoreCase):
+                    sampler = new ParentBasedSampler(new AlwaysOffSampler());
+                    break;
+                case var _ when string.Equals(configValue, "parentbased_traceidratio", StringComparison.OrdinalIgnoreCase):
+                    {
+                        var traceIdRatio = ReadTraceIdRatio(configuration);
+                        sampler = new ParentBasedSampler(new TraceIdRatioBasedSampler(traceIdRatio));
+                        break;
+                    }
+
+                default:
+                    OpenTelemetrySdkEventSource.Log.TracesSamplerConfigInvalid(configValue);
+                    break;
+            }
+
+            if (sampler != null)
+            {
+                OpenTelemetrySdkEventSource.Log.TracerProviderSdkEvent($"Trace sampler set to '{sampler.GetType().FullName}' from configuration.");
+            }
+        }
+
+        return sampler ?? new ParentBasedSampler(new AlwaysOnSampler());
+    }
+
+    private static double ReadTraceIdRatio(IConfiguration configuration)
+    {
+        if (configuration.TryGetStringValue(TracesSamplerArgConfigKey, out var configValue) &&
+                double.TryParse(configValue, out var traceIdRatio))
+        {
+            return traceIdRatio;
+        }
+        else
+        {
+            OpenTelemetrySdkEventSource.Log.TracesSamplerArgConfigInvalid(configValue ?? string.Empty);
+        }
+
+        return 1.0;
+    }
+
     private static ActivitySamplingResult ComputeActivitySamplingResult(
         ref ActivityCreationOptions<ActivityContext> options,
         Sampler sampler)
@@ -429,47 +486,46 @@ internal sealed class TracerProviderSdk : TracerProvider
         {
             SamplingDecision.RecordAndSample => ActivitySamplingResult.AllDataAndRecorded,
             SamplingDecision.RecordOnly => ActivitySamplingResult.AllData,
-            _ => ActivitySamplingResult.PropagationData,
+            _ => PropagateOrIgnoreData(ref options),
         };
 
-        if (activitySamplingResult != ActivitySamplingResult.PropagationData)
+        if (activitySamplingResult > ActivitySamplingResult.PropagationData)
         {
             foreach (var att in samplingResult.Attributes)
             {
                 options.SamplingTags.Add(att.Key, att.Value);
             }
+        }
 
+        if (activitySamplingResult != ActivitySamplingResult.None
+            && samplingResult.TraceStateString != null)
+        {
             // https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/trace/sdk.md#sampler
             // Spec requires clearing Tracestate if empty Tracestate is returned.
             // Since .NET did not have this capability, it'll break
             // existing samplers if we did that. So the following is
             // adopted to remain spec-compliant and backward compat.
             // The behavior is:
-            // if sampler returns null, its treated as if it has no intend
+            // if sampler returns null, its treated as if it has not intended
             // to change Tracestate. Existing SamplingResult ctors will put null as default TraceStateString,
             // so all existing samplers will get this behavior.
             // if sampler returns non-null, then it'll be used as the
             // new value for Tracestate
             // A sampler can return string.Empty if it intends to clear the state.
-            if (samplingResult.TraceStateString != null)
-            {
-                options = options with { TraceState = samplingResult.TraceStateString };
-            }
-
-            return activitySamplingResult;
+            options = options with { TraceState = samplingResult.TraceStateString };
         }
 
-        return PropagateOrIgnoreData(options.Parent);
+        return activitySamplingResult;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ActivitySamplingResult PropagateOrIgnoreData(in ActivityContext parentContext)
+    private static ActivitySamplingResult PropagateOrIgnoreData(ref ActivityCreationOptions<ActivityContext> options)
     {
-        var isRootSpan = parentContext.TraceId == default;
+        var isRootSpan = options.Parent.TraceId == default;
 
         // If it is the root span or the parent is remote select PropagationData so the trace ID is preserved
         // even if no activity of the trace is recorded (sampled per OpenTelemetry parlance).
-        return (isRootSpan || parentContext.IsRemote)
+        return (isRootSpan || options.Parent.IsRemote)
             ? ActivitySamplingResult.PropagationData
             : ActivitySamplingResult.None;
     }
@@ -542,11 +598,11 @@ internal sealed class TracerProviderSdk : TracerProvider
             {
                 activity.SetTag(att.Key, att.Value);
             }
+        }
 
-            if (samplingResult.TraceStateString != null)
-            {
-                activity.TraceStateString = samplingResult.TraceStateString;
-            }
+        if (samplingResult.TraceStateString != null)
+        {
+            activity.TraceStateString = samplingResult.TraceStateString;
         }
     }
 }

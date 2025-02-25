@@ -1,18 +1,5 @@
-// <copyright file="RuntimeContextTest.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
 using Xunit;
 
@@ -29,7 +16,7 @@ public class RuntimeContextTest : IDisposable
     public static void RegisterSlotWithInvalidNameThrows()
     {
         Assert.Throws<ArgumentException>(() => RuntimeContext.RegisterSlot<bool>(string.Empty));
-        Assert.Throws<ArgumentException>(() => RuntimeContext.RegisterSlot<bool>(null));
+        Assert.Throws<ArgumentException>(() => RuntimeContext.RegisterSlot<bool>(null!));
     }
 
     [Fact]
@@ -44,7 +31,7 @@ public class RuntimeContextTest : IDisposable
     public static void GetSlotWithInvalidNameThrows()
     {
         Assert.Throws<ArgumentException>(() => RuntimeContext.GetSlot<bool>(string.Empty));
-        Assert.Throws<ArgumentException>(() => RuntimeContext.GetSlot<bool>(null));
+        Assert.Throws<ArgumentException>(() => RuntimeContext.GetSlot<bool>(null!));
     }
 
     [Fact]
@@ -71,12 +58,88 @@ public class RuntimeContextTest : IDisposable
         Assert.Equal(100, expectedSlot.Get());
     }
 
+    [Fact]
+    public void ValueTypeSlotNullableTests()
+    {
+        var expectedSlot = RuntimeContext.RegisterSlot<int>("testslot_valuetype");
+        Assert.NotNull(expectedSlot);
+
+        var slotValueAccessor = expectedSlot as IRuntimeContextSlotValueAccessor;
+        Assert.NotNull(slotValueAccessor);
+
+        Assert.Equal(0, expectedSlot.Get());
+        Assert.Equal(0, slotValueAccessor.Value);
+
+        slotValueAccessor.Value = 100;
+
+        Assert.Equal(100, expectedSlot.Get());
+        Assert.Equal(100, slotValueAccessor.Value);
+
+        slotValueAccessor.Value = null;
+
+        Assert.Equal(0, expectedSlot.Get());
+        Assert.Equal(0, slotValueAccessor.Value);
+
+        Assert.Throws<InvalidCastException>(() => slotValueAccessor.Value = false);
+    }
+
+    [Fact]
+    public void NullableValueTypeSlotNullableTests()
+    {
+        var expectedSlot = RuntimeContext.RegisterSlot<int?>("testslot_nullablevaluetype");
+        Assert.NotNull(expectedSlot);
+
+        var slotValueAccessor = expectedSlot as IRuntimeContextSlotValueAccessor;
+        Assert.NotNull(slotValueAccessor);
+
+        Assert.Null(expectedSlot.Get());
+        Assert.Null(slotValueAccessor.Value);
+
+        slotValueAccessor.Value = 100;
+
+        Assert.Equal(100, expectedSlot.Get());
+        Assert.Equal(100, slotValueAccessor.Value);
+
+        slotValueAccessor.Value = null;
+
+        Assert.Null(expectedSlot.Get());
+        Assert.Null(slotValueAccessor.Value);
+
+        Assert.Throws<InvalidCastException>(() => slotValueAccessor.Value = false);
+    }
+
+    [Fact]
+    public void ReferenceTypeSlotNullableTests()
+    {
+        var expectedSlot = RuntimeContext.RegisterSlot<RuntimeContextTest>("testslot_referencetype");
+        Assert.NotNull(expectedSlot);
+
+        var slotValueAccessor = expectedSlot as IRuntimeContextSlotValueAccessor;
+        Assert.NotNull(slotValueAccessor);
+
+        Assert.Null(expectedSlot.Get());
+        Assert.Null(slotValueAccessor.Value);
+
+        slotValueAccessor.Value = this;
+
+        Assert.Equal(this, expectedSlot.Get());
+        Assert.Equal(this, slotValueAccessor.Value);
+
+        slotValueAccessor.Value = null;
+
+        Assert.Null(expectedSlot.Get());
+        Assert.Null(slotValueAccessor.Value);
+
+        Assert.Throws<InvalidCastException>(() => slotValueAccessor.Value = new object());
+    }
+
 #if NETFRAMEWORK
     [Fact]
     public void NetFrameworkGetSlotInAnotherAppDomain()
     {
         const string slotName = "testSlot";
         var slot = RuntimeContext.RegisterSlot<int>(slotName);
+        Assert.NotNull(slot);
         slot.Set(100);
 
         // Create an object in another AppDomain and try to access the slot

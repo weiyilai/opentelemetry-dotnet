@@ -1,18 +1,5 @@
-// <copyright file="B3Propagator.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
 using System.Diagnostics;
 using System.Text;
@@ -75,7 +62,7 @@ public sealed class B3Propagator : TextMapPropagator
     public override ISet<string> Fields => AllFields;
 
     /// <inheritdoc/>
-    public override PropagationContext Extract<T>(PropagationContext context, T carrier, Func<T, string, IEnumerable<string>> getter)
+    public override PropagationContext Extract<T>(PropagationContext context, T carrier, Func<T, string, IEnumerable<string>?> getter)
     {
         if (context.ActivityContext.IsValid())
         {
@@ -151,7 +138,7 @@ public sealed class B3Propagator : TextMapPropagator
         }
     }
 
-    private static PropagationContext ExtractFromMultipleHeaders<T>(PropagationContext context, T carrier, Func<T, string, IEnumerable<string>> getter)
+    private static PropagationContext ExtractFromMultipleHeaders<T>(PropagationContext context, T carrier, Func<T, string, IEnumerable<string>?> getter)
     {
         try
         {
@@ -184,7 +171,8 @@ public sealed class B3Propagator : TextMapPropagator
             }
 
             var traceOptions = ActivityTraceFlags.None;
-            if (SampledValues.Contains(getter(carrier, XB3Sampled)?.FirstOrDefault())
+            var xb3Sampled = getter(carrier, XB3Sampled)?.FirstOrDefault();
+            if ((xb3Sampled != null && SampledValues.Contains(xb3Sampled))
                 || FlagsValue.Equals(getter(carrier, XB3Flags)?.FirstOrDefault(), StringComparison.Ordinal))
             {
                 traceOptions |= ActivityTraceFlags.Recorded;
@@ -201,11 +189,18 @@ public sealed class B3Propagator : TextMapPropagator
         }
     }
 
-    private static PropagationContext ExtractFromSingleHeader<T>(PropagationContext context, T carrier, Func<T, string, IEnumerable<string>> getter)
+    private static PropagationContext ExtractFromSingleHeader<T>(PropagationContext context, T carrier, Func<T, string, IEnumerable<string>?> getter)
     {
         try
         {
-            var header = getter(carrier, XB3Combined)?.FirstOrDefault();
+            var headers = getter(carrier, XB3Combined);
+            if (headers == null)
+            {
+                return context;
+            }
+
+            var header = headers.FirstOrDefault();
+
             if (string.IsNullOrWhiteSpace(header))
             {
                 return context;

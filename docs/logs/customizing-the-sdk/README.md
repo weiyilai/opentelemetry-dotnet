@@ -14,15 +14,24 @@ TODO
 
 ### IncludeScopes
 
-A "[scope](https://docs.microsoft.com/dotnet/core/extensions/logging#log-scopes)"
-is an `ILogger` concept that can group a set of logical operations and attach
-data to each log created as part of a set.
+Log
+[scope](https://docs.microsoft.com/dotnet/core/extensions/logging#log-scopes) is
+an `ILogger` concept that can group a set of logical operations and attach data
+to each log created as part of a set.
 
 `IncludeScopes` is off by default. Setting this to `true` will include all
 scopes with the exported `LogRecord`. Consult the individual `Exporter`
 docs to learn more about how scopes will be processed.
 
 See [Program.cs](Program.cs) for an example.
+
+> [!NOTE]
+> When using [`ILogger.BeginScope<TState>(TState
+state)`](https://learn.microsoft.com/dotnet/api/microsoft.extensions.logging.ilogger.beginscope),
+it is highly recommended to use `IReadOnlyList<KeyValue<string, object?>>` or
+`List<KeyValuePair<string, object?>>` as the `TState` for the best performance.
+When performance is not a critical requirement,
+`IEnumerable<KeyValuePair<string, object?>>` can be used.
 
 ### IncludeFormattedMessage
 
@@ -36,16 +45,16 @@ TODO
 
 ### AddProcessor
 
-[Processors](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/logs/logging-library-sdk.md#logprocessor)
+[Processors](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/logs/sdk.md#logrecordprocessor)
 must be added using `OpenTelemetryLoggerOptions.AddProcessor()`.
 It is not supported to add Processors after building the `LoggerFactory`.
 
 ```csharp
 var loggerFactory = LoggerFactory.Create(builder =>
 {
-    builder.AddOpenTelemetry(options =>
+    builder.AddOpenTelemetry(logging =>
     {
-        options.AddProcessor(...)
+        logging.AddProcessor(...);
     });
 });
 ```
@@ -56,9 +65,12 @@ For more information on Processors, please review [Extending the SDK](../extendi
 
 [Resource](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/resource/sdk.md)
 is the immutable representation of the entity producing the telemetry.
-If no `Resource` is explicitly configured, the default is to use a resource
-indicating this [Telemetry
-SDK](https://github.com/open-telemetry/opentelemetry-specification/tree/main/specification/resource/semantic_conventions#telemetry-sdk).
+If no `Resource` is explicitly configured, the
+[default](https://github.com/open-telemetry/semantic-conventions/blob/main/docs/resource/README.md#semantic-attributes-with-sdk-provided-default-value)
+is to use a resource indicating this
+[Service](https://github.com/open-telemetry/semantic-conventions/blob/main/docs/resource/README.md#service)
+and [Telemetry
+SDK](https://github.com/open-telemetry/semantic-conventions/blob/main/docs/resource/README.md#telemetry-sdk).
 The `SetResourceBuilder` method on `OpenTelemetryLoggerOptions` can be used to
 set a single `ResourceBuilder`. If `SetResourceBuilder` is called multiple
 times, only the last is kept. It is not possible to change the resource builder
@@ -69,9 +81,9 @@ The snippet below shows configuring a custom `ResourceBuilder` to the provider.
 ```csharp
 var loggerFactory = LoggerFactory.Create(builder =>
 {
-    builder.AddOpenTelemetry(options =>
+    builder.AddOpenTelemetry(logging =>
     {
-        options.SetResourceBuilder(ResourceBuilder.CreateDefault().AddService(
+        logging.SetResourceBuilder(ResourceBuilder.CreateDefault().AddService(
             serviceName: "MyService",
             serviceVersion: "1.0.0"));
     });
@@ -104,8 +116,8 @@ and also defines "Warning" as the minimum `LogLevel` for a user defined category
 These rules as defined only apply to the `OpenTelemetryLoggerProvider`.
 
 ```csharp
-ILoggingBuilder.AddFilter<OpenTelemetryLoggerProvider>("*", LogLevel.Error);
-ILoggingBuilder.AddFilter<OpenTelemetryLoggerProvider>("category name", LogLevel.Warning);
+builder.AddFilter<OpenTelemetryLoggerProvider>("*", LogLevel.Error);
+builder.AddFilter<OpenTelemetryLoggerProvider>("MyProduct.MyLibrary.MyClass", LogLevel.Warning);
 ```
 
 ## Learn more

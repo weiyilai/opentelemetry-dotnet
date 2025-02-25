@@ -1,18 +1,5 @@
-// <copyright file="TracerShim.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
 using OpenTelemetry.Context.Propagation;
 using OpenTelemetry.Internal;
@@ -20,17 +7,30 @@ using OpenTracing.Propagation;
 
 namespace OpenTelemetry.Shims.OpenTracing;
 
+/// <summary>
+/// Implements OpenTracing <see cref="global::OpenTracing.ITracer"/> interface
+/// using OpenTelemetry <see cref="Trace.Tracer"/> implementation.
+/// </summary>
 public class TracerShim : global::OpenTracing.ITracer
 {
     private readonly Trace.Tracer tracer;
-    private readonly TextMapPropagator definedPropagator;
+    private readonly TextMapPropagator? definedPropagator;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="TracerShim"/> class.
+    /// </summary>
+    /// <param name="tracerProvider"><see cref="Trace.TracerProvider"/>.</param>
     public TracerShim(Trace.TracerProvider tracerProvider)
         : this(tracerProvider, null)
     {
     }
 
-    public TracerShim(Trace.TracerProvider tracerProvider, TextMapPropagator textFormat)
+    /// <summary>
+    /// Initializes a new instance of the <see cref="TracerShim"/> class.
+    /// </summary>
+    /// <param name="tracerProvider"><see cref="Trace.TracerProvider"/>.</param>
+    /// <param name="textFormat"><see cref="TextMapPropagator"/>.</param>
+    public TracerShim(Trace.TracerProvider tracerProvider, TextMapPropagator? textFormat)
     {
         Guard.ThrowIfNull(tracerProvider);
 
@@ -46,7 +46,7 @@ public class TracerShim : global::OpenTracing.ITracer
     public global::OpenTracing.IScopeManager ScopeManager { get; }
 
     /// <inheritdoc/>
-    public global::OpenTracing.ISpan ActiveSpan => this.ScopeManager.Active?.Span;
+    public global::OpenTracing.ISpan? ActiveSpan => this.ScopeManager.Active?.Span;
 
     private TextMapPropagator Propagator
     {
@@ -63,7 +63,7 @@ public class TracerShim : global::OpenTracing.ITracer
     }
 
     /// <inheritdoc/>
-    public global::OpenTracing.ISpanContext Extract<TCarrier>(IFormat<TCarrier> format, TCarrier carrier)
+    public global::OpenTracing.ISpanContext? Extract<TCarrier>(IFormat<TCarrier> format, TCarrier carrier)
     {
         Guard.ThrowIfNull(format);
         Guard.ThrowIfNull(carrier);
@@ -79,7 +79,7 @@ public class TracerShim : global::OpenTracing.ITracer
                 carrierMap.Add(entry.Key, new[] { entry.Value });
             }
 
-            static IEnumerable<string> GetCarrierKeyValue(Dictionary<string, IEnumerable<string>> source, string key)
+            static IEnumerable<string>? GetCarrierKeyValue(Dictionary<string, IEnumerable<string>> source, string key)
             {
                 if (key == null || !source.TryGetValue(key, out var value))
                 {

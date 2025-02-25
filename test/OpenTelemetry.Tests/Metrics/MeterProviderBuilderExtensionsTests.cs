@@ -1,18 +1,5 @@
-// <copyright file="MeterProviderBuilderExtensionsTests.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -29,7 +16,7 @@ public class MeterProviderBuilderExtensionsTests
     {
         var builder = Sdk.CreateMeterProviderBuilder();
 
-        MyInstrumentation myInstrumentation = null;
+        MyInstrumentation? myInstrumentation = null;
 
         RunBuilderServiceLifecycleTest(
             builder,
@@ -67,6 +54,7 @@ public class MeterProviderBuilderExtensionsTests
         using var provider = builder.Build() as MeterProviderSdk;
 
         Assert.NotNull(provider);
+        Assert.NotNull(provider.OwnedServiceProvider);
 
         var readers = ((IServiceProvider)provider.OwnedServiceProvider).GetServices<MyReader>();
 
@@ -85,13 +73,13 @@ public class MeterProviderBuilderExtensionsTests
     [Fact]
     public void AddInstrumentationTest()
     {
-        List<object> instrumentation = null;
+        List<object>? instrumentation = null;
 
         using (var provider = Sdk.CreateMeterProviderBuilder()
             .AddInstrumentation<MyInstrumentation>()
             .AddInstrumentation((sp, provider) => new MyInstrumentation() { Provider = provider })
             .AddInstrumentation(new MyInstrumentation())
-            .AddInstrumentation(() => (object)null)
+            .AddInstrumentation(() => (object?)null)
             .Build() as MeterProviderSdk)
         {
             Assert.NotNull(provider);
@@ -157,6 +145,7 @@ public class MeterProviderBuilderExtensionsTests
         Assert.True(serviceProviderTestExecuted);
         Assert.Equal(2, configureInvocations);
 
+        Assert.NotNull(provider);
         Assert.Single(provider.Resource.Attributes);
         Assert.Contains(provider.Resource.Attributes, kvp => kvp.Key == "key2" && (string)kvp.Value == "value2");
     }
@@ -175,7 +164,7 @@ public class MeterProviderBuilderExtensionsTests
 
                 configureBuilderCalled = true;
 
-                var testKeyValue = configuration.GetValue<string>("TEST_KEY", null);
+                var testKeyValue = configuration.GetValue<string?>("TEST_KEY", null);
 
                 Assert.Equal("TEST_KEY_VALUE", testKeyValue);
             })
@@ -195,7 +184,7 @@ public class MeterProviderBuilderExtensionsTests
             .ConfigureServices(services =>
             {
                 var configuration = new ConfigurationBuilder()
-                    .AddInMemoryCollection(new Dictionary<string, string> { ["TEST_KEY_2"] = "TEST_KEY_2_VALUE" })
+                    .AddInMemoryCollection(new Dictionary<string, string?> { ["TEST_KEY_2"] = "TEST_KEY_2_VALUE" })
                     .Build();
 
                 services.AddSingleton<IConfiguration>(configuration);
@@ -206,7 +195,7 @@ public class MeterProviderBuilderExtensionsTests
 
                 configureBuilderCalled = true;
 
-                var testKey2Value = configuration.GetValue<string>("TEST_KEY_2", null);
+                var testKey2Value = configuration.GetValue<string?>("TEST_KEY_2", null);
 
                 Assert.Equal("TEST_KEY_2_VALUE", testKey2Value);
             })
@@ -371,7 +360,7 @@ public class MeterProviderBuilderExtensionsTests
 
     private sealed class MyInstrumentation : IDisposable
     {
-        internal MeterProvider Provider;
+        internal MeterProvider? Provider;
         internal bool Disposed;
 
         public void Dispose()

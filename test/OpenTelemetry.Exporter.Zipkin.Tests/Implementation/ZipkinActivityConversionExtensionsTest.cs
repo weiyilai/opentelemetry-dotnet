@@ -1,18 +1,5 @@
-// <copyright file="ZipkinActivityConversionExtensionsTest.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
 using System.Diagnostics;
 using OpenTelemetry.Internal;
@@ -32,7 +19,7 @@ public class ZipkinActivityConversionExtensionsTest
     {
         var attributeEnumerationState = new TagEnumerationState
         {
-            Tags = PooledList<KeyValuePair<string, object>>.Create(),
+            Tags = PooledList<KeyValuePair<string, object?>>.Create(),
         };
 
         using var activity = new Activity("TestActivity");
@@ -49,11 +36,11 @@ public class ZipkinActivityConversionExtensionsTest
     [InlineData("string", null)]
     [InlineData("bool", null)]
     [InlineData("double", null)]
-    public void CheckNullValueProcessTag(string key, object value)
+    public void CheckNullValueProcessTag(string key, object? value)
     {
         var attributeEnumerationState = new TagEnumerationState
         {
-            Tags = PooledList<KeyValuePair<string, object>>.Create(),
+            Tags = PooledList<KeyValuePair<string, object?>>.Create(),
         };
 
         using var activity = new Activity("TestActivity");

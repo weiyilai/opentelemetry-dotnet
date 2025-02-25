@@ -1,19 +1,7 @@
-// <copyright file="OtlpTestHelpers.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
+using System.Globalization;
 using Google.Protobuf.Collections;
 using Xunit;
 using OtlpCommon = OpenTelemetry.Proto.Common.V1;
@@ -23,7 +11,7 @@ namespace OpenTelemetry.Exporter.OpenTelemetryProtocol.Tests;
 internal static class OtlpTestHelpers
 {
     public static void AssertOtlpAttributes(
-        IEnumerable<KeyValuePair<string, object>> expected,
+        IEnumerable<KeyValuePair<string, object?>> expected,
         RepeatedField<OtlpCommon.KeyValue> actual)
     {
         var expectedAttributes = expected.ToList();
@@ -32,6 +20,7 @@ internal static class OtlpTestHelpers
         {
             var current = expectedAttributes[i].Value;
             Assert.Equal(expectedAttributes[i].Key, actual[i].Key);
+            Assert.NotNull(current);
 
             if (current.GetType().IsArray)
             {
@@ -76,6 +65,21 @@ internal static class OtlpTestHelpers
 
                     expectedSize++;
                 }
+                else
+                {
+                    var source = (Array)current;
+
+                    Assert.Equal(source.Length, actual[i].Value.ArrayValue.Values.Count);
+
+                    for (int j = 0; j < source.Length; j++)
+                    {
+                        var item = source.GetValue(j);
+
+                        AssertOtlpAttributeValue(item, actual[i].Value.ArrayValue.Values[j]);
+                    }
+
+                    expectedSize++;
+                }
             }
             else
             {
@@ -88,7 +92,7 @@ internal static class OtlpTestHelpers
         Assert.Equal(expectedSize, actual.Count);
     }
 
-    private static void AssertOtlpAttributeValue(object expected, OtlpCommon.AnyValue actual)
+    private static void AssertOtlpAttributeValue(object? expected, OtlpCommon.AnyValue actual)
     {
         switch (expected)
         {
@@ -108,7 +112,7 @@ internal static class OtlpTestHelpers
                 Assert.Equal(i, actual.IntValue);
                 break;
             default:
-                Assert.Equal(expected.ToString(), actual.StringValue);
+                Assert.Equal(Convert.ToString(expected, CultureInfo.InvariantCulture), actual.StringValue);
                 break;
         }
     }

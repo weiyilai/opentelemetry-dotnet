@@ -1,36 +1,41 @@
+# Called by ci.yml to perform package validation
+# See: https://docs.github.com/en/actions/using-workflows/reusing-workflows#creating-a-reusable-workflow
 name: Package Validation
 
 on:
-  pull_request:
-    branches: [ 'main*' ]
-    paths-ignore:
-    - '**.md'
+  workflow_call:
 
 jobs:
-  build-test-stable:
+  run-package-validation-stable:
     runs-on: windows-latest
 
     steps:
     - uses: actions/checkout@v4
       with:
-        fetch-depth: 0 # fetching all
+        # Note: By default GitHub only fetches 1 commit. MinVer needs to find
+        # the version tag which is typically NOT on the first commit so we
+        # retrieve them all.
+        fetch-depth: 0
 
     - name: Setup dotnet
-      uses: actions/setup-dotnet@v3
+      uses: actions/setup-dotnet@v4
 
-    - name: Pack
-      run: dotnet pack --configuration Release /p:EnablePackageValidation=true /p:ExposeExperimentalFeatures=false
+    - name: dotnet pack
+      run: dotnet pack ./build/OpenTelemetry.proj --configuration Release /p:EnablePackageValidation=true /p:ExposeExperimentalFeatures=false /p:RunningDotNetPack=true
 
-  build-test-experimental:
+  run-package-validation-experimental:
     runs-on: windows-latest
 
     steps:
     - uses: actions/checkout@v4
       with:
-        fetch-depth: 0 # fetching all
+        # Note: By default GitHub only fetches 1 commit. MinVer needs to find
+        # the version tag which is typically NOT on the first commit so we
+        # retrieve them all.
+        fetch-depth: 0
 
     - name: Setup dotnet
-      uses: actions/setup-dotnet@v3
+      uses: actions/setup-dotnet@v4
 
-    - name: Pack
-      run: dotnet pack --configuration Release /p:EnablePackageValidation=true /p:ExposeExperimentalFeatures=true
+    - name: dotnet pack
+      run: dotnet pack ./build/OpenTelemetry.proj --configuration Release /p:EnablePackageValidation=true /p:ExposeExperimentalFeatures=true /p:RunningDotNetPack=true

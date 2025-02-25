@@ -1,53 +1,71 @@
-// <copyright file="ExemplarReservoir.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
+
+#if EXPOSE_EXPERIMENTAL_FEATURES && NET
+using System.Diagnostics.CodeAnalysis;
+using OpenTelemetry.Internal;
+#endif
 
 namespace OpenTelemetry.Metrics;
 
+#if EXPOSE_EXPERIMENTAL_FEATURES
 /// <summary>
-/// The base class for defining Exemplar Reservoir.
+/// ExemplarReservoir base implementation and contract.
 /// </summary>
-internal abstract class ExemplarReservoir
+/// <remarks>
+/// <para experimental-warning="true"><b>WARNING</b>: This is an experimental API which might change or be removed in the future. Use at your own risk.</para>
+/// Specification: <see
+/// href="https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/metrics/sdk.md#exemplarreservoir"/>.
+/// </remarks>
+#if NET
+[Experimental(DiagnosticDefinitions.ExemplarReservoirExperimentalApi, UrlFormat = DiagnosticDefinitions.ExperimentalApiUrlFormat)]
+#endif
+public
+#else
+internal
+#endif
+    abstract class ExemplarReservoir
 {
-    /// <summary>
-    /// Offers measurement to the reservoir.
-    /// </summary>
-    /// <param name="value">The value of the measurement.</param>
-    /// <param name="tags">The complete set of tags provided with the measurement.</param>
-    /// <param name="index">The histogram bucket index where this measurement is going to be stored.
-    /// This is optional and is only relevant for Histogram with buckets.</param>
-    public abstract void Offer(long value, ReadOnlySpan<KeyValuePair<string, object?>> tags, int index = default);
+    // Note: This constructor is internal because we don't allow custom
+    // ExemplarReservoir implementations to be based directly on the base class
+    // only FixedSizeExemplarReservoir.
+    internal ExemplarReservoir()
+    {
+    }
 
     /// <summary>
-    /// Offers measurement to the reservoir.
+    /// Gets a value indicating whether or not the <see
+    /// cref="ExemplarReservoir"/> should reset its state when performing
+    /// collection.
     /// </summary>
-    /// <param name="value">The value of the measurement.</param>
-    /// <param name="tags">The complete set of tags provided with the measurement.</param>
-    /// <param name="index">The histogram bucket index where this measurement is going to be stored.
-    /// This is optional and is only relevant for Histogram with buckets.</param>
-    public abstract void Offer(double value, ReadOnlySpan<KeyValuePair<string, object?>> tags, int index = default);
+    /// <remarks>
+    /// Note: <see cref="ResetOnCollect"/> is set to <see langword="true"/> for
+    /// <see cref="MetricPoint"/>s using delta aggregation temporality and <see
+    /// langword="false"/> for <see cref="MetricPoint"/>s using cumulative
+    /// aggregation temporality.
+    /// </remarks>
+    public bool ResetOnCollect { get; private set; }
+
+    /// <summary>
+    /// Offers a measurement to the reservoir.
+    /// </summary>
+    /// <param name="measurement"><see cref="ExemplarMeasurement{T}"/>.</param>
+    public abstract void Offer(in ExemplarMeasurement<long> measurement);
+
+    /// <summary>
+    /// Offers a measurement to the reservoir.
+    /// </summary>
+    /// <param name="measurement"><see cref="ExemplarMeasurement{T}"/>.</param>
+    public abstract void Offer(in ExemplarMeasurement<double> measurement);
 
     /// <summary>
     /// Collects all the exemplars accumulated by the Reservoir.
     /// </summary>
-    /// <param name="actualTags">The actual tags that are part of the metric. Exemplars are
-    /// only expected to contain any filtered tags, so this will allow the reservoir
-    /// to prepare the filtered tags from all the tags it is given by doing the
-    /// equivalent of filtered tags = all tags - actual tags.
-    /// </param>
-    /// <param name="reset">Flag to indicate if the reservoir should be reset after this call.</param>
-    /// <returns>Array of Exemplars.</returns>
-    public abstract Exemplar[] Collect(ReadOnlyTagCollection actualTags, bool reset);
+    /// <returns><see cref="ReadOnlyExemplarCollection"/>.</returns>
+    public abstract ReadOnlyExemplarCollection Collect();
+
+    internal virtual void Initialize(AggregatorStore aggregatorStore)
+    {
+        this.ResetOnCollect = aggregatorStore.OutputDelta;
+    }
 }

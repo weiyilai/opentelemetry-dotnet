@@ -1,23 +1,9 @@
-// <copyright file="IntegrationTests.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Diagnostics.Tracing;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using OpenTelemetry.Exporter.OpenTelemetryProtocol.Implementation;
 using OpenTelemetry.Logs;
@@ -34,7 +20,8 @@ public sealed class IntegrationTests : IDisposable
     private const string CollectorHostnameEnvVarName = "OTEL_COLLECTOR_HOSTNAME";
     private const int ExportIntervalMilliseconds = 10000;
     private static readonly SdkLimitOptions DefaultSdkLimitOptions = new();
-    private static readonly string CollectorHostname = SkipUnlessEnvVarFoundTheoryAttribute.GetEnvironmentVariable(CollectorHostnameEnvVarName);
+    private static readonly ExperimentalOptions DefaultExperimentalOptions = new();
+    private static readonly string? CollectorHostname = SkipUnlessEnvVarFoundTheoryAttribute.GetEnvironmentVariable(CollectorHostnameEnvVarName);
     private readonly OpenTelemetryEventListener openTelemetryEventListener;
 
     public IntegrationTests(ITestOutputHelper outputHelper)
@@ -74,7 +61,7 @@ public sealed class IntegrationTests : IDisposable
             },
         };
 
-        DelegatingExporter<Activity> delegatingExporter = null;
+        DelegatingExporter<Activity>? delegatingExporter = null;
         var exportResults = new List<ExportResult>();
 
         var activitySourceName = "otlp.collector.test";
@@ -82,10 +69,11 @@ public sealed class IntegrationTests : IDisposable
         var builder = Sdk.CreateTracerProviderBuilder()
             .AddSource(activitySourceName);
 
-        builder.AddProcessor(OtlpTraceExporterHelperExtensions.BuildOtlpExporterProcessor(
-            exporterOptions,
-            DefaultSdkLimitOptions,
-            serviceProvider: null,
+        builder.AddProcessor(sp => OtlpTraceExporterHelperExtensions.BuildOtlpExporterProcessor(
+            serviceProvider: sp,
+            exporterOptions: exporterOptions,
+            sdkLimitOptions: DefaultSdkLimitOptions,
+            experimentalOptions: DefaultExperimentalOptions,
             configureExporterInstance: otlpExporter =>
             {
                 delegatingExporter = new DelegatingExporter<Activity>
@@ -152,7 +140,7 @@ public sealed class IntegrationTests : IDisposable
             Protocol = protocol,
         };
 
-        DelegatingExporter<Metric> delegatingExporter = null;
+        DelegatingExporter<Metric>? delegatingExporter = null;
         var exportResults = new List<ExportResult>();
 
         var meterName = "otlp.collector.test";
@@ -163,10 +151,11 @@ public sealed class IntegrationTests : IDisposable
         var readerOptions = new MetricReaderOptions();
         readerOptions.PeriodicExportingMetricReaderOptions.ExportIntervalMilliseconds = useManualExport ? Timeout.Infinite : ExportIntervalMilliseconds;
 
-        builder.AddReader(OtlpMetricExporterExtensions.BuildOtlpExporterMetricReader(
-            exporterOptions,
-            readerOptions,
-            serviceProvider: null,
+        builder.AddReader(sp => OtlpMetricExporterExtensions.BuildOtlpExporterMetricReader(
+            serviceProvider: sp,
+            exporterOptions: exporterOptions,
+            metricReaderOptions: readerOptions,
+            experimentalOptions: DefaultExperimentalOptions,
             configureExporterInstance: otlpExporter =>
             {
                 delegatingExporter = new DelegatingExporter<Metric>
@@ -231,36 +220,42 @@ public sealed class IntegrationTests : IDisposable
             Protocol = protocol,
         };
 
-        DelegatingExporter<LogRecord> delegatingExporter = null;
+        DelegatingExporter<LogRecord> delegatingExporter;
         var exportResults = new List<ExportResult>();
-        var processorOptions = new LogRecordExportProcessorOptions();
-        processorOptions.ExportProcessorType = exportProcessorType;
-        processorOptions.BatchExportProcessorOptions = new()
+        var processorOptions = new LogRecordExportProcessorOptions
         {
-            ScheduledDelayMilliseconds = ExportIntervalMilliseconds,
+            ExportProcessorType = exportProcessorType,
+            BatchExportProcessorOptions = new()
+            {
+                ScheduledDelayMilliseconds = ExportIntervalMilliseconds,
+            },
         };
 
         using var loggerFactory = LoggerFactory.Create(builder =>
         {
             builder
-                .AddOpenTelemetry(options => options
-                    .AddProcessor(OtlpLogExporterHelperExtensions.BuildOtlpLogExporter(
-                        exporterOptions,
-                        processorOptions,
-                        configureExporterInstance: otlpExporter =>
-                        {
-                            delegatingExporter = new DelegatingExporter<LogRecord>
+                .UseOpenTelemetry(logging => logging
+                    .AddProcessor(sp =>
+                        OtlpLogExporterHelperExtensions.BuildOtlpLogExporter(
+                            sp,
+                            exporterOptions,
+                            processorOptions,
+                            DefaultSdkLimitOptions,
+                            DefaultExperimentalOptions,
+                            configureExporterInstance: otlpExporter =>
                             {
-                                OnExportFunc = (batch) =>
+                                delegatingExporter = new DelegatingExporter<LogRecord>
                                 {
-                                    var result = otlpExporter.Export(batch);
-                                    exportResults.Add(result);
-                                    handle.Set();
-                                    return result;
-                                },
-                            };
-                            return delegatingExporter;
-                        })));
+                                    OnExportFunc = (batch) =>
+                                    {
+                                        var result = otlpExporter.Export(batch);
+                                        exportResults.Add(result);
+                                        handle.Set();
+                                        return result;
+                                    },
+                                };
+                                return delegatingExporter;
+                            })));
         });
 
         var logger = loggerFactory.CreateLogger("OtlpLogExporterTests");
@@ -279,33 +274,6 @@ public sealed class IntegrationTests : IDisposable
                 break;
             default:
                 throw new NotSupportedException("Unexpected processor type encountered.");
-        }
-    }
-
-    [Trait("CategoryName", "CollectorIntegrationTests")]
-    [SkipUnlessEnvVarFoundFact(CollectorHostnameEnvVarName)]
-    public void ConstructingGrpcExporterFailsWhenHttp2UnencryptedSupportIsDisabledForNetcoreapp31()
-    {
-        // Adding the OtlpExporter creates a GrpcChannel.
-        // This switch must be set before creating a GrpcChannel/HttpClient when calling an insecure gRPC service.
-        // We want to fail fast so we are disabling it
-        // See: https://docs.microsoft.com/aspnet/core/grpc/troubleshoot#call-insecure-grpc-services-with-net-core-client
-        AppContext.SetSwitch("System.Net.Http.SocketsHttpHandler.Http2UnencryptedSupport", false);
-
-        var exporterOptions = new OtlpExporterOptions
-        {
-            Endpoint = new Uri($"http://{CollectorHostname}:4317"),
-        };
-
-        var exception = Record.Exception(() => new OtlpTraceExporter(exporterOptions));
-
-        if (Environment.Version.Major == 3)
-        {
-            Assert.NotNull(exception);
-        }
-        else
-        {
-            Assert.Null(exception);
         }
     }
 
@@ -330,8 +298,8 @@ public sealed class IntegrationTests : IDisposable
 
         protected override void OnEventWritten(EventWrittenEventArgs eventData)
         {
-            string message;
-            if (eventData.Message != null && (eventData.Payload?.Count ?? 0) > 0)
+            string? message;
+            if (eventData.Message != null && eventData.Payload != null && eventData.Payload.Count > 0)
             {
                 message = string.Format(eventData.Message, eventData.Payload.ToArray());
             }

@@ -1,18 +1,5 @@
-// <copyright file="ConsoleLogRecordExporter.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
+// SPDX-License-Identifier: Apache-2.0
 
 using OpenTelemetry.Internal;
 using OpenTelemetry.Logs;
@@ -23,9 +10,9 @@ namespace OpenTelemetry.Exporter;
 public class ConsoleLogRecordExporter : ConsoleExporter<LogRecord>
 {
     private const int RightPaddingLength = 35;
-    private readonly object syncObject = new();
+    private readonly Lock syncObject = new();
     private bool disposed;
-    private string disposedStackTrace;
+    private string? disposedStackTrace;
     private bool isDisposeMessageSent;
 
     public ConsoleLogRecordExporter(ConsoleExporterOptions options)
@@ -52,7 +39,7 @@ public class ConsoleLogRecordExporter : ConsoleExporter<LogRecord>
                 this.WriteLine("The console exporter is still being invoked after it has been disposed. This could be due to the application's incorrect lifecycle management of the LoggerFactory/OpenTelemetry .NET SDK.");
                 this.WriteLine(Environment.StackTrace);
                 this.WriteLine(Environment.NewLine + "Dispose was called on the following stack trace:");
-                this.WriteLine(this.disposedStackTrace);
+                this.WriteLine(this.disposedStackTrace!);
             }
 
             return ExportResult.Failure;
@@ -103,12 +90,12 @@ public class ConsoleLogRecordExporter : ConsoleExporter<LogRecord>
                     // See https://github.com/open-telemetry/opentelemetry-dotnet/pull/3182
                     // for explanation.
                     var valueToTransform = logRecord.Attributes[i].Key.Equals("{OriginalFormat}")
-                        ? new KeyValuePair<string, object>("OriginalFormat (a.k.a Body)", logRecord.Attributes[i].Value)
+                        ? new KeyValuePair<string, object?>("OriginalFormat (a.k.a Body)", logRecord.Attributes[i].Value)
                         : logRecord.Attributes[i];
 
-                    if (ConsoleTagTransformer.Instance.TryTransformTag(valueToTransform, out var result))
+                    if (this.TagWriter.TryTransformTag(valueToTransform, out var result))
                     {
-                        this.WriteLine($"{string.Empty,-4}{result}");
+                        this.WriteLine($"{string.Empty,-4}{result.Key}: {result.Value}");
                     }
                 }
             }
@@ -138,11 +125,11 @@ public class ConsoleLogRecordExporter : ConsoleExporter<LogRecord>
                     exporter.WriteLine("LogRecord.ScopeValues (Key:Value):");
                 }
 
-                foreach (KeyValuePair<string, object> scopeItem in scope)
+                foreach (KeyValuePair<string, object?> scopeItem in scope)
                 {
-                    if (ConsoleTagTransformer.Instance.TryTransformTag(scopeItem, out var result))
+                    if (this.TagWriter.TryTransformTag(scopeItem, out var result))
                     {
-                        exporter.WriteLine($"[Scope.{scopeDepth}]:{result}");
+                        exporter.WriteLine($"[Scope.{scopeDepth}]:{result.Key}: {result.Value}");
                     }
                 }
             }
@@ -153,9 +140,9 @@ public class ConsoleLogRecordExporter : ConsoleExporter<LogRecord>
                 this.WriteLine("\nResource associated with LogRecord:");
                 foreach (var resourceAttribute in resource.Attributes)
                 {
-                    if (ConsoleTagTransformer.Instance.TryTransformTag(resourceAttribute, out var result))
+                    if (this.TagWriter.TryTransformTag(resourceAttribute.Key, resourceAttribute.Value, out var result))
                     {
-                        this.WriteLine(result);
+                        this.WriteLine($"{result.Key}: {result.Value}");
                     }
                 }
             }

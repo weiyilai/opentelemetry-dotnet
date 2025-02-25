@@ -1,21 +1,23 @@
-name: docfx
+# Called by ci.yml to run documentation build
+# See: https://docs.github.com/en/actions/using-workflows/reusing-workflows#creating-a-reusable-workflow
+name: Build docfx
 
 on:
-  push:
-    branches: [ 'main*' ]
-  pull_request:
-    branches: [ 'main*' ]
+  workflow_call:
 
 jobs:
-  build:
+  run-docfx-build:
     runs-on: windows-latest
 
     steps:
     - name: check out code
       uses: actions/checkout@v4
 
+    - name: Setup dotnet
+      uses: actions/setup-dotnet@v4
+
     - name: install docfx
-      run: choco install docfx -y
+      run: dotnet tool install -g docfx
 
     - name: run .\build\docfx.cmd
       shell: cmd

@@ -1,24 +1,12 @@
-// <copyright file="LogRecordAttributeList.cs" company="OpenTelemetry Authors">
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// </copyright>
-
-#nullable enable
+// SPDX-License-Identifier: Apache-2.0
 
 using System.Collections;
 using System.ComponentModel;
 using System.Diagnostics;
+#if NET && EXPOSE_EXPERIMENTAL_FEATURES
+using System.Diagnostics.CodeAnalysis;
+#endif
 using OpenTelemetry.Internal;
 using OpenTelemetry.Trace;
 
@@ -29,6 +17,9 @@ namespace OpenTelemetry.Logs;
 /// Stores attributes to be added to a log message.
 /// </summary>
 /// <remarks><inheritdoc cref="Logger" path="/remarks"/></remarks>
+#if NET
+[Experimental(DiagnosticDefinitions.LogsBridgeExperimentalApi, UrlFormat = DiagnosticDefinitions.ExperimentalApiUrlFormat)]
+#endif
 public
 #else
 /// <summary>
@@ -237,52 +228,49 @@ internal
         attributeStorage ??= new List<KeyValuePair<string, object?>>(OverflowAdditionalCapacity);
 
         // TODO: Perf test this, adjust as needed.
-        if (count > 0)
+        attributeStorage.Add(this.attribute1);
+        if (count == 1)
         {
-            attributeStorage.Add(this.attribute1);
-            if (count == 1)
-            {
-                return attributeStorage;
-            }
-
-            attributeStorage.Add(this.attribute2);
-            if (count == 2)
-            {
-                return attributeStorage;
-            }
-
-            attributeStorage.Add(this.attribute3);
-            if (count == 3)
-            {
-                return attributeStorage;
-            }
-
-            attributeStorage.Add(this.attribute4);
-            if (count == 4)
-            {
-                return attributeStorage;
-            }
-
-            attributeStorage.Add(this.attribute5);
-            if (count == 5)
-            {
-                return attributeStorage;
-            }
-
-            attributeStorage.Add(this.attribute6);
-            if (count == 6)
-            {
-                return attributeStorage;
-            }
-
-            attributeStorage.Add(this.attribute7);
-            if (count == 7)
-            {
-                return attributeStorage;
-            }
-
-            attributeStorage.Add(this.attribute8);
+            return attributeStorage;
         }
+
+        attributeStorage.Add(this.attribute2);
+        if (count == 2)
+        {
+            return attributeStorage;
+        }
+
+        attributeStorage.Add(this.attribute3);
+        if (count == 3)
+        {
+            return attributeStorage;
+        }
+
+        attributeStorage.Add(this.attribute4);
+        if (count == 4)
+        {
+            return attributeStorage;
+        }
+
+        attributeStorage.Add(this.attribute5);
+        if (count == 5)
+        {
+            return attributeStorage;
+        }
+
+        attributeStorage.Add(this.attribute6);
+        if (count == 6)
+        {
+            return attributeStorage;
+        }
+
+        attributeStorage.Add(this.attribute7);
+        if (count == 7)
+        {
+            return attributeStorage;
+        }
+
+        attributeStorage.Add(this.attribute8);
 
         return attributeStorage;
     }
